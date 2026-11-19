@@ -10,7 +10,7 @@
   --blume-action-foreground: var(--blume-accent-foreground);
   --blume-code-background: var(--click-global-color-background-muted, #282828);
   --blume-radius: 0.5rem;
-  --blume-content-width: 44rem;
+  --blume-content-width: 54rem;
 }
 
 :root[data-theme="dark"] .loom-logo-background,
