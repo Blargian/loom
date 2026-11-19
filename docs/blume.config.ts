@@ -34,7 +34,7 @@ export default defineConfig({
     ],
   },
   theme: {
-    mode: "light",
+    mode: "dark",
     accent: "#ffcc00",
     action: "#ffcc00",
     background: { light: "#ffffff", dark: "#181818" },

@@ -1,6 +1,7 @@
 /* Keep every muted interactive surface as quiet as the sidebar hover. */
 :root {
   --blume-muted: rgb(0 0 0 / 0.05);
+  --blume-content-width: 54rem;
 }
 
 :root[data-theme="dark"] {
