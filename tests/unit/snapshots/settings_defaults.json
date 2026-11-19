@@ -992,6 +992,7 @@
  "namespace_taxonomy_ttl_s": 300.0,
  "namespace_tune_document_sample": 50,
  "namespace_write_marks_flush_interval_s": 5.0,
+ "native_command_drain_timeout_s": 15.0,
  "oauth_access_token_ttl_seconds": 3600,
  "oauth_enabled": false,
  "oauth_issuer": "",
@@ -1296,6 +1297,7 @@
  "worker_backoff_cap_s": 60.0,
  "worker_ledger_rows": true,
  "worker_partial_retry_s": 3600.0,
+ "workers_child_retirement_timeout_s": 1.0,
  "workers_process": "child",
  "workload_exchanges_per_agent": 300,
  "workload_exchanges_per_trust": 50000

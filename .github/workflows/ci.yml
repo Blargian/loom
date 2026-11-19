@@ -994,8 +994,16 @@ jobs:
           tests/integration/test_pg_clickhouse_live_ch.py
           tests/integration/test_cell_tenancy_pg.py
           tests/integration/test_router_directory_pg.py
+          tests/integration/test_pg_online_index.py
+          tests/integration/test_pg_owned_cleanup.py
           tests/integration/test_cell_unset_gate_pg.py
           tests/integration/test_cell_prepare.py
+          tests/integration/test_cell_attach.py
+          tests/integration/test_cell_attach_two_replicas.py
+          tests/integration/test_cell_attach_cleanup.py
+          tests/integration/test_cell_control_cleanup.py
+          tests/integration/test_cell_control_fence.py
+          tests/integration/test_directory_control_cleanup.py
           tests/integration/test_cell_org_triggers_pg.py
           tests/integration/test_source_access_store.py
           tests/integration/test_source_document_store.py
@@ -1014,6 +1022,34 @@ jobs:
           tests/integration/test_marked_rollup_migration_native.py
           tests/integration/test_marked_durable_folds_native.py
           tests/integration/test_marked_sql_surface_native.py
+      - name: pytest online-index durability on a private physical standby
+        timeout-minutes: 8
+        env:
+          LOOM_PG_IMAGE: postgres:${{ matrix.postgres }}
+          LOOM_PG_CONTAINER: loom-scale-index-drill-pg
+          LOOM_PG_HOST_PORT: "15432"
+          LOOM_PG_INDEX_DRILL: "1"
+          LOOM_PG_INDEX_DRILL_DSN: postgres://loom:loomdev@localhost:15432/loom
+        run: |
+          set -euo pipefail
+          for name in loom-scale-index-drill-pg loom-scale-index-drill-pg-standby; do
+            if docker container inspect "$name" >/dev/null 2>&1; then
+              echo "drill container already exists: $name" >&2
+              exit 1
+            fi
+          done
+          if docker network inspect loom-scale-index-drill-pg-net >/dev/null 2>&1; then
+            echo "drill network already exists" >&2
+            exit 1
+          fi
+          cleanup() {
+            docker rm -f -v loom-scale-index-drill-pg loom-scale-index-drill-pg-standby || true
+            docker network rm loom-scale-index-drill-pg-net || true
+          }
+          trap cleanup EXIT
+          bash dev/ci_start_postgres.sh
+          docker update --memory 1g --memory-swap 1g loom-scale-index-drill-pg loom-scale-index-drill-pg-standby
+          pytest -q tests/integration/test_pg_online_index_durability.py
       # The tenant-isolation gates again, against a second server that enforces auth:
       # the Postgres read paths (heads by key and by id, narrowed scopes) see real tokens.
       # They run whether or not the memory suites passed (`!cancelled()`).

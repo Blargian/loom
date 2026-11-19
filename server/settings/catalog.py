@@ -5374,10 +5374,16 @@ class RuntimeSettings(BaseModel):
     # process it starts and stops with the lease, so the passes do not share
     # the event loop that serves requests; inline = in the serving process.
     workers_process: Literal["child", "inline"] = "child"
+    # At most this many seconds to certify a reaped worker child; also bounded by
+    # the remaining stop or restart delay. Expiry leaves its participant unretired.
+    workers_child_retirement_timeout_s: float = Field(default=1.0, gt=0, allow_inf_nan=False)
     # Seconds a process keeps serving after SIGTERM while /v1/health/ready
     # answers 503, so the load balancer stops routing to it before its port
     # closes. Size it to the LB's probe interval × failure threshold. 0 = stop at once.
     shutdown_ready_delay_s: float = Field(default=15.0, ge=0)
+    # Seconds a native CLI command allows its producers, deferred writes and
+    # participant retirement to finish. Expiry leaves the participant unretired.
+    native_command_drain_timeout_s: float = Field(default=15.0, gt=0, allow_inf_nan=False)
     # Seconds boot waits for the first load of the tracker registry and the
     # runtime overrides, and the first publish of the dashboard bundle, before
     # it serves; readiness stays false until the first two load.

@@ -604,7 +604,11 @@ def start_refresh_loop() -> asyncio.Task[None]:
             if not get_model_work_gate().closed:
                 await refresh_shared()
 
-    _refresh_task = asyncio.get_running_loop().create_task(_loop(), name="loom-calibration-refresh")
+    from server.core.retirement import get_gate
+
+    _refresh_task = get_gate().track(
+        asyncio.get_running_loop().create_task(_loop(), name="loom-calibration-refresh")
+    )
     return _refresh_task
 
 

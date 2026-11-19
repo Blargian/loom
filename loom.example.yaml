@@ -5104,10 +5104,18 @@ settings:
   # serves requests; inline = in the serving process. [restart]
   # workers_process: "child"
 
+  # At most this many seconds to certify a reaped worker child; also bounded by the
+  # remaining stop or restart delay. Expiry leaves its participant unretired. [restart]
+  # workers_child_retirement_timeout_s: 1.0
+
   # Seconds a process keeps serving after SIGTERM while /v1/health/ready answers 503, so
   # the load balancer stops routing to it before its port closes. Size it to the LB's
   # probe interval × failure threshold. 0 = stop at once. [restart]
   # shutdown_ready_delay_s: 15.0
+
+  # Seconds a native CLI command allows its producers, deferred writes and participant
+  # retirement to finish. Expiry leaves the participant unretired. [restart]
+  # native_command_drain_timeout_s: 15.0
 
   # Seconds boot waits for the first load of the tracker registry and the runtime
   # overrides, and the first publish of the dashboard bundle, before it serves;

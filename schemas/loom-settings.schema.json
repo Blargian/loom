@@ -5645,6 +5645,12 @@
           "type": "number",
           "description": "loom.namespace_write_marks is an in-process max per (org, namespace, plane), flushed as one INSERT this often."
         },
+        "native_command_drain_timeout_s": {
+          "default": 15.0,
+          "exclusiveMinimum": 0,
+          "type": "number",
+          "description": "Seconds a native CLI command allows its producers, deferred writes and participant retirement to finish. Expiry leaves the participant unretired."
+        },
         "oauth_access_token_ttl_seconds": {
           "default": 3600,
           "maximum": 86400,
@@ -7302,6 +7308,12 @@
           "exclusiveMinimum": 0,
           "type": "number",
           "description": "A pass with a failed leg on a worker whose interval is longer than this retries after this long, doubling with each further such pass, up to the interval: a weekly pass must not leave one namespace's transient failure standing for a week."
+        },
+        "workers_child_retirement_timeout_s": {
+          "default": 1.0,
+          "exclusiveMinimum": 0,
+          "type": "number",
+          "description": "At most this many seconds to certify a reaped worker child; also bounded by the remaining stop or restart delay. Expiry leaves its participant unretired."
         },
         "workers_process": {
           "default": "child",

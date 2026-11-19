@@ -436,6 +436,10 @@ Raised in `server/memory/domain/record_values.py`.
 
 Raised in `server/tracker/app/sources.py`.
 
+#### `CONTROL_UPGRADE_REQUIRED`
+
+Raised in `server/router/app.py`.
+
 #### `CREDENTIAL_NOT_READONLY`
 
 Raised in `server/tracker/app/sources.py`.
@@ -755,6 +759,10 @@ Raised in `server/router/app.py`. Category `capacity`, retryable: yes.
 #### `PROBE_UNREACHABLE`
 
 Raised in `server/router/app.py`. Category `dependency`, retryable: yes.
+
+#### `PROCESS_STOPPING`
+
+Raised in `server/transport/model_maintenance.py`, `server/transport/retirement.py`.
 
 #### `PROJECTION_BEHIND`
 

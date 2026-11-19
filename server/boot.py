@@ -394,9 +394,11 @@ async def open_storage_authority() -> None:
 
 
 async def close_storage_authority() -> None:
-    from server.core import pg
+    from server.core import pg, retirement
 
-    await pg.close_pool()
+    gate = retirement.get_gate()
+    if not (gate.role in ("server", "worker") and gate.closed):
+        await pg.close_pool()
 
 
 async def run_fenced_boot_migrations(
@@ -478,6 +480,9 @@ def _spawn_boot_loop(coro: Coroutine[Any, Any, Any], *, name: str) -> asyncio.Ta
     """A task that runs for the process's life: cancelled at shutdown, never
     registered as deferred, since a model transition's drain waits for those."""
     task = asyncio.get_running_loop().create_task(coro, name=name)
+    from server.core.retirement import get_gate
+
+    get_gate().track(task)
     _BOOT_TASKS.add(task)
     task.add_done_callback(_BOOT_TASKS.discard)
     return task
