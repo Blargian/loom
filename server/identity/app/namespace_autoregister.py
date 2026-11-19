@@ -126,6 +126,8 @@ async def ensure_registered(
 ) -> bool:
     """Insert the registry row for (org, namespace) if none exists. Returns
     True when a row was inserted. Never raises."""
+    from server.auth.authz import identity_write
+
     if (org, namespace) in _known or reserved_for_sso(namespace):
         return False  # an SSO account's row is single sign-on's to create
     try:
@@ -173,7 +175,8 @@ async def ensure_registered(
         # Both versions sit below any explicit row's (a register, a restriction), so an
         # explicit row wins under FINAL, even one another replica wrote a moment ago.
         row["updated_at"] = OWNERLESS_ROW_VERSION if in_use else AUTO_ROW_VERSION
-        await ch.insert("loom.namespaces", [row])
+        with identity_write():
+            await ch.insert("loom.namespaces", [row])
         _remember(org, namespace)
         from server.identity.app.traffic_class_registry import note_registered
 
