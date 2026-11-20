@@ -10,7 +10,7 @@ import asyncio
 import functools
 import logging
 import math
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
@@ -20,6 +20,7 @@ from server.core.ch_writes import partition_blocks
 from server.core.datetimes import naive_utc_now, naive_utc_now_seconds
 from server.core.error_summary import error_summary
 from server.core.repo_base import _CHClient, _default_client
+from server.core.shielded import finish_cleanup
 from server.identity.domain.read_scope import WHOLE_NAMESPACE
 from server.memory.domain.lock import assert_unlocked
 from server.memory.domain.redaction_lineage import is_content_hash
@@ -53,6 +54,7 @@ from server.memory.store.rows import (
 )
 from server.memory.store.sql import _SEQUENTIAL
 from server.observability import degradations
+from server.observability.budget_shape import current_budget_shape, note_budget_shape
 from server.settings import settings
 
 _log = logging.getLogger(__name__)
@@ -287,6 +289,64 @@ async def current_heads(
     ]
 
 
+async def finish_followups[T](write: Coroutine[Any, Any, T], *, name: str) -> T:
+    """Finish owed row follow-ups, keeping the request's budget tag and cancellation."""
+    shape: str | None = None
+
+    async def run() -> T:
+        nonlocal shape
+        try:
+            return await write
+        finally:
+            shape = current_budget_shape()
+
+    try:
+        return await finish_cleanup(run(), name=name)
+    finally:
+        if shape is not None:
+            note_budget_shape(shape)
+
+
+async def _insert_clickhouse_copies(
+    rows: list[dict[str, Any]],
+    read: Sequence[MemoryRow | None],
+    *,
+    ch: _CHClient | None,
+    then: Callable[[], Awaitable[int | None]] | None,
+    landed: Callable[[], Awaitable[None]] | None,
+    on_commit: Callable[[], None] | None,
+    exact: bool,
+) -> int:
+    inserted = not rows
+    count = 0
+
+    def mark_inserted() -> None:
+        nonlocal inserted
+        inserted = True
+        if on_commit is not None:
+            on_commit()
+
+    async def follow() -> int:
+        if rows and landed is not None:
+            await landed()
+        return (await then() or 0) if then is not None else 0
+
+    try:
+        if rows:
+            expected = (
+                {identity_key(r): h for r, h in zip(rows, read, strict=True)} if exact else None
+            )
+            await insert_memory_versions(
+                rows, ch=ch, expected_heads=expected, on_inserted=mark_inserted
+            )
+    finally:
+        # A successful memory insert still owes its follow-ups when holder
+        # cleanup is cancelled. Refused and uncertain sends owe none here.
+        if inserted and (then is not None or (rows and landed is not None)):
+            count = await finish_followups(follow(), name="memory.copy_followups")
+    return count
+
+
 async def insert_versions_over_heads(
     rows: list[dict[str, Any]],
     read: Sequence[MemoryRow | None],
@@ -300,13 +360,16 @@ async def insert_versions_over_heads(
     live_sources: bool = False,
     policy: Mapping[tuple[str, str], int] | None = None,
     on_commit: Callable[[], None] | None = None,
+    exact: bool = False,
 ) -> int:
     """Write `rows`, each a copy of the authority's head beside it in `read`, drawn above
     it (`rows.version_over`) or, to yield to a write since, before the read: a copy below
     the head is overtaken by it. Under Postgres only over that very version, else 503
     (`heads_unchanged(exact=True)`): a copy never overwrites a write, a relabel or a
     redaction it did not see; a key with no head read (None) is held to having no live
-    head. On ClickHouse, the plain insert.
+    head. On ClickHouse, `exact` checks the rows under the same Keeper fences every
+    memory insert takes, refusing a moved head with 503 `ADMISSION_CONTENDED`; without
+    it, only the insert is fenced and the source may have moved before the fence.
 
     `then` runs once the rows are in and its count is returned; under Postgres within the
     commit's lease, so a redaction waits out the ClickHouse writes it makes, and a failure
@@ -317,17 +380,13 @@ async def insert_versions_over_heads(
     (with `settle_held`, only those ClickHouse holds at their row's version, for a `then`
     that copies what it finds), and the delivery worker builds one it did not.
     `sources`: the revisions the rows copy (`Admission.sources`), with `live_sources`
-    each still its key's live head. `on_commit` is called once the rows are in: under
-    Postgres as the commit returns, before anything else can fail. A commit whose
+    each still its key's live head. `on_commit` is called once the rows are in, before
+    holder cleanup or publication can fail. A commit whose
     publication is pending is done."""
     if not pg.enabled() or not rows:
-        if rows:
-            await insert_memory_versions(rows, ch=ch)
-            if on_commit is not None:
-                on_commit()
-            if landed is not None:
-                await landed()
-        return 0 if then is None else (await then() or 0)
+        return await _insert_clickhouse_copies(
+            rows, read, ch=ch, then=then, landed=landed, on_commit=on_commit, exact=exact
+        )
     check_memory_rows(rows)
     heads = {identity_key(r): e for r, e in zip(rows, read, strict=True)}
     admission = pg_memory.Admission(

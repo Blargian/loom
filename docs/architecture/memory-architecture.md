@@ -149,8 +149,9 @@ outcome (refusal, 4xx `rejected`, or `error`) and to attach value-shape advisori
 
 11. **Dry run** returns the verdict with version 0 and writes nothing, not even an audit
     row.
-12. **Dual write** (`_set_dual_write`). The `memory` row and its `build_embedding_row`
-    row are inserted concurrently. The embedding row carries the columns search filters
+12. **Dual write** (`_set_dual_write`). The `memory` row commits before its
+    `build_embedding_row` row is inserted, so a refused memory write publishes no text to
+    search. The embedding row carries the columns search filters
     on (type, status, tags, entities, validity, `source_class`, `verified`), so no leg
     joins back to `memory`; its `conflict_checked_at` carries the resolver's mark.
     Conflict marks then go on the peers, or `refines` supersedes them.
@@ -1207,6 +1208,17 @@ quarantine write `status='rejected'` as a new version too (`reject_by_identity`)
 usage fold's counters on `memory` are batched lightweight updates; see
 [ClickHouse](clickhouse.md#deletes-and-mutations).
 
+Under the ClickHouse authority, every memory version insert holds a Keeper fence per
+identity key. `memory.lock`, `memory.unlock` and `memory.verify` check that the source
+row is still the head inside the fence, and answer 503 `ADMISSION_CONTENDED` with
+no version written when it moved. All value inserts take the same fences, including
+unconditional writes and batches, so the check and insert cannot interleave with another
+replica's version insert. A re-read outside the fence provides no such guarantee.
+The check compares values and metadata as well as versions, since writers can draw
+equal versions. Usage totals and JSON projection formatting do not identify a version.
+The fence's failure and rollout limits are described in
+[storage authority](storage-authority.md#why-two-stores).
+
 A caller that must know whether its new version took effect (`write_versions_by_ids`
 with `on_written`) re-reads each key's head under FINAL after the insert. The version is
 confirmed when it is the head; a higher head (a write that raced in after the read)
@@ -1345,6 +1357,9 @@ target or its grants, then rechecks the values after its own grant writes. A rol
 checks all planned live reinstatements in bounded slices before its first batch, then
 reads each batch's heads afresh. Under Postgres each commit holds the
 policy generations captured before the guard; a changed policy refuses the commit.
+ClickHouse namespace restores write bounded batches so their Keeper holders remain
+live through admission and insertion. A failed later batch leaves earlier inserts in
+place; retrying the restore writes the snapshot again.
 An Undo checks before recording its acceptance. Tombstone-only copies remain allowed.
 
 Rollback restores heads, not exact state. `version` is a wall-clock stamp, so the head
