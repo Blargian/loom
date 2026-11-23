@@ -1358,14 +1358,14 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "per-frame grep-and-open loop."
     ),
     "code.grep": (
-        "Find indexed text with its lines and enclosing symbols. "
-        "`pattern` accepts literals or one RE2 expression with `regex: true`. "
-        "`include_body` adds definitions. "
-        "`neighbours` adds callers, callees, tests and docs. "
-        "Regex and message-search fallbacks are disclosed. "
-        "`mode: 'message'` finds error or log templates. "
-        "`mode: 'presence'` checks namespaces. Check coverage before inferring absence. "
-        "Use code.files for paths and local tools for uncommitted code."
+        "Find text and enclosing symbols in indexed source. "
+        "Use literal strings or one RE2 string with `regex: true`. "
+        "`context_lines` adds nearby source. `include_body` adds definitions. "
+        "Filter by `path_prefix`, `path_globs` or `langs`. "
+        "`neighbours` adds graph links. `deadline_ms` allows partial results. "
+        "`mode: 'message'` finds printed error templates. "
+        "`mode: 'presence'` checks `namespaces`. "
+        "Check coverage. Use code.files for paths and local tools for uncommitted source."
     ),
     "code.files": (
         "Indexed files by NAME: an rg-style glob "
@@ -2183,11 +2183,12 @@ CODING_TOOL_DESCRIPTIONS: dict[str, str] = {
         "elision disclosures; use local tools for changed or unindexed code."
     ),
     "code.grep": (
-        "Find text in indexed source, with lines and enclosing symbols. "
-        'Pass a `pattern` string or a list of literals like ["parse(", "load("]. '
-        "`regex: true` uses one RE2 string. For behavior use code.search. "
+        "Find exact text or several literal alternatives in indexed source. "
+        "`include_body: true` adds enclosing definitions in the same call. "
+        "Use code.search to find behavior when the exact text is unknown. "
+        "`regex: true` uses one RE2 string. "
         "Scope with `path_prefix`, `path_globs` or `langs`. "
-        "`include_body` returns distinct enclosing definitions. "
+        "`context_lines` adds nearby source. "
         "`definitions_partial` flags missing source. Check coverage before inferring absence."
     ),
     # The coding tier lists blast radius with the sentences a coding session

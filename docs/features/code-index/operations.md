@@ -98,7 +98,14 @@ and document-section fallback. The Python index keeps decorators in their
 owning function's source chunk, so a hit inside a decorator can return the
 complete definition. No token budget is imposed on these grep bodies.
 
-The default remains matching lines only. Bodies are read only for the served page,
+`code.grep(context_lines=3)` adds up to three retained lines on either side of
+each match in `contexts`. Each window gives its path, inclusive source line
+range and exact text at the match's retained revision. Overlapping lines in the
+served page appear once. Conflicting lines and context with uncertain revision
+are left out and set `contexts_partial=true`. Windows stop at the edges of
+available source chunks. The option is available in matches mode.
+
+The default returns matching lines. Bodies are read only for the served page,
 and page reruns remove definitions belonging to earlier pages. If source cannot be
 read, matching lines remain available with `definitions_partial=true` and a
 `definitions_note`. Unresolved or elided definitions retain their structural
