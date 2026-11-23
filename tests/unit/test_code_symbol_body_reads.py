@@ -89,6 +89,37 @@ def test_a_missing_or_partial_retained_span_returns_no_body() -> None:
     )
 
 
+@pytest.mark.parametrize(("chunk_end", "chunk_id"), [(20, "s1"), (21, "s1"), (20, "s2")])
+def test_owned_chunk_proves_or_disproves_an_older_declaration_extent(
+    chunk_end: int, chunk_id: str
+) -> None:
+    revision = "b" * 40
+    text = "source line\n" * (chunk_end - 9)
+    old_symbol = {**SYM, "qualified_name": "run", "_extent_commit": "a" * 40}
+
+    class Repo(CodeRepo):
+        async def source_chunks_for_span(
+            self, org, ns, path, start, end, model, *, with_revision=False, owner=None
+        ):
+            assert with_revision and owner == ["s1"]
+            return [
+                {
+                    "content": text,
+                    "start_line": 10,
+                    "end_line": chunk_end,
+                    "kind": "function",
+                    "scope": "run",
+                    "symbol_ids": [chunk_id],
+                    "indexed_commit": revision,
+                }
+            ]
+
+    result = asyncio.run(
+        symbol_body(Repo(), "o", "n", old_symbol, model="local:test", expected_commit=revision)
+    )
+    assert result == (text if chunk_end == 20 and chunk_id == "s1" else "")
+
+
 @pytest.mark.parametrize(("symbol_id", "expected"), [("s1", "def run(): pass\n"), ("s2", "")])
 def test_single_line_python_body_requires_ownership_of_the_wider_chunk(
     monkeypatch: pytest.MonkeyPatch, symbol_id: str, expected: str

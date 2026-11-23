@@ -214,10 +214,15 @@ def _prefer_scip(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     parser span (end_line) is carried onto the surviving compiler row, whose
     own span is a single line. Without this, one real definition read as
     `ambiguous: true` to a bot that cannot supply further qualification."""
-    best: dict[tuple[str, str], dict[str, Any]] = {}
-    order: list[tuple[str, str]] = []
+    best: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    order: list[tuple[str, str, str, str]] = []
     for r in rows:
-        key = (str(r["qualified_name"]), str(r["symbol_id"]))
+        key = (
+            str(r["qualified_name"]),
+            str(r["symbol_id"]),
+            str(r["path"]) if "extent_commit" in r else "",
+            str(r.get("extent_commit") or ""),
+        )
         if key not in best:
             best[key] = r
             order.append(key)
@@ -241,7 +246,11 @@ def _prefer_scip(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         t_start, t_end = int(t.get("start_line") or 0), int(t.get("end_line") or 0)
         for s in scip_rows:
-            if str(s.get("path")) != str(t.get("path")) or _bare(s) != _bare(t):
+            if (
+                s.get("extent_commit") != t.get("extent_commit")
+                or str(s.get("path")) != str(t.get("path"))
+                or _bare(s) != _bare(t)
+            ):
                 continue
             s_start = int(s.get("start_line") or 0)
             if s_start == t_start or (t_start <= s_start <= t_end):

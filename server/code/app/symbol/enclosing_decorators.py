@@ -20,20 +20,31 @@ async def extend_decorated_spans(
     ns: str,
     locations: list[tuple[str, int]],
     by_path: dict[str, list[dict[str, Any]]],
-) -> set[str]:
+    *,
+    revisions: dict[str, str] | None = None,
+) -> set[tuple[str, str]]:
     """A function chunk may start at its first Python decorator, before the symbol's def."""
     if not settings.embedding_model:
         return set()
     candidates: dict[tuple[str, str], tuple[dict[str, Any], set[int]]] = {}
     for path, line in locations:
         rows = by_path.get(path, [])
-        if not path.lower().endswith((".py", ".pyi", ".pyw")) or _innermost(rows, line):
+        if not path.lower().endswith((".py", ".pyi", ".pyw")):
             continue
-        candidate = min(
-            (row for row in rows if row.get("symbol_id") and int(row["start_line"]) > line),
-            key=lambda row: int(row["start_line"]),
-            default=None,
-        )
+        candidate = _innermost(rows, line)
+        if candidate is not None:
+            # An older declaration can be current, but the match revision
+            # needs its owning chunk's start, including any decorators.
+            if revisions is None or str(candidate.get("extent_commit") or "").rstrip("\0") == (
+                revisions.get(path)
+            ):
+                continue
+        else:
+            candidate = min(
+                (row for row in rows if row.get("symbol_id") and int(row["start_line"]) > line),
+                key=lambda row: int(row["start_line"]),
+                default=None,
+            )
         if candidate is not None:
             key = (path, str(candidate["symbol_id"]))
             candidates.setdefault(key, (candidate, set()))[1].add(line)
@@ -49,13 +60,13 @@ async def extend_decorated_spans(
     try:
         with code_span("enclosing.decorators", candidates=len(candidates)) as span:
             starts = await repo.function_chunk_starts(
-                org, ns, served_model_label(settings.embedding_model), keys
+                org, ns, served_model_label(settings.embedding_model), keys, revisions=revisions
             )
             span_attrs(span, rows=len(starts))
     except Exception:  # Optional ownership evidence can be absent while exact matches still work.
         logger.warning("code.enclosing could not read declaration extents", exc_info=True)
         return set()
-    widened: set[str] = set()
+    widened: set[tuple[str, str]] = set()
     for (path, _), (row, lines) in candidates.items():
         definition = int(row["start_line"])
         start = min(
@@ -64,5 +75,5 @@ async def extend_decorated_spans(
         )
         if 0 < start < definition and any(start <= line for line in lines):
             row["start_line"] = start
-            widened.add(str(row["symbol_id"]))
+            widened.add((path, str(row["symbol_id"])))
     return widened
