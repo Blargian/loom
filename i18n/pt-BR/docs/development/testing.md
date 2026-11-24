@@ -214,12 +214,8 @@ O `.github/workflows/scorecard.yml` executa as verificações do OpenSSF Scoreca
 semanalmente e sob demanda. Ele publica a pontuação que o badge do README mostra e adiciona os achados
 ao code scanning; não é executado em pull requests e não bloqueia nenhum merge.
 
-O `.github/workflows/docs-site.yml` compila o site de documentação com `mkdocs build --strict`
-em pull requests para `main` que tocam `docs/`, `mkdocs.yml`, `llms.txt`,
-`llms-install.md`, `scripts/docs_site/`, `scripts/codegen/page_summary.py` ou o próprio
-workflow, e em todo push para `main`, de modo que um link ou âncora quebrado faz a verificação
-`docs site / build` falhar. Ele publica o site no GitHub Pages somente a partir de `main` e somente enquanto a
-variável de repositório `DOCS_SITE_ENABLED` for `true`.
+`npm --prefix docs run build` compila o site de documentação a partir do pacote `docs/`. A
+configuração de deploy publica o resultado em `https://loom.clickhouse.com/docs/`.
 
 Um pull request empilhado sobre outra branch não recebe verificações até ser redirecionado para `main` ou
 uma linha `release/X.Y`, e um pull request com conflito de merge também não recebe nenhuma: "no checks

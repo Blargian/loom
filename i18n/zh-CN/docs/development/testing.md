@@ -165,7 +165,7 @@ python scripts/gates/mypy_gate.py --update
 
 `.github/workflows/scorecard.yml` 在推送到 `main` 时、每周以及按需运行 OpenSSF Scorecard 检查。它发布 README 徽章所显示的分数，并把发现的问题加入代码扫描；它不在拉取请求上运行，也不阻塞合并。
 
-`.github/workflows/docs-site.yml` 在目标为 `main` 且改动了 `docs/`、`mkdocs.yml`、`llms.txt`、`llms-install.md`、`scripts/docs_site/`、`scripts/codegen/page_summary.py` 或该工作流本身的拉取请求上，以及每次推送到 `main` 时，用 `mkdocs build --strict` 构建文档站点，因此失效的链接或锚点会使 `docs site / build` 检查失败。仅当仓库变量 `DOCS_SITE_ENABLED` 为 `true` 时，它才会从 `main` 将站点发布到 GitHub Pages。
+`npm --prefix docs run build` 从 `docs/` 包构建文档站点。部署配置在 `https://loom.clickhouse.com/docs/` 发布结果。
 
 堆叠在另一个分支上的拉取请求，在重新指向 `main` 或 `release/X.Y` 分支线之前不会运行任何检查；存在合并冲突的拉取请求同样不会运行检查：推送后出现“no checks reported”通常就是这两种情况之一。
 
