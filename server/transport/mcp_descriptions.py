@@ -1370,10 +1370,8 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "Check coverage. Use code.files for paths and local tools for uncommitted source."
     ),
     "code.read": (
-        "Read exact ranges from indexed files in one call. "
-        "Pass `path`, `start_line`, and optional `end_line` for one range. "
-        'Batch several with `ranges`, for example ["src/app.py:40-70", "src/lib.py:12-19"]. '
-        "Loom verifies source at its indexed revision against the local Git mirror."
+        "Read inclusive, one-based indexed lines. Pass path, start_line, optional end_line "
+        "or ranges of such objects or path:start-end strings."
     ),
     "code.files": (
         "Indexed files by NAME: an rg-style glob "
