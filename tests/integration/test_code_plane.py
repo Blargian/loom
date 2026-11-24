@@ -516,7 +516,10 @@ async def test_symbol_reads_a_test_that_passes_a_class_to_a_decorator(
         repo,
         org,
         ns,
-        source=b"class EntryPoint:\n    def run(self):\n        return 'ok'\n",
+        source=(
+            b"class EntryPoint:\n    def run(self):\n"
+            b"        self.seen = self.payload.value\n        return 'ok'\n"
+        ),
         path="src/cli.py",
     )
     path = "tests/test_cli.py"
@@ -574,6 +577,27 @@ async def test_symbol_reads_a_test_that_passes_a_class_to_a_decorator(
     assert clue.resolved_by == "file_clues"
     assert matched.body == member.body
     assert matched.examples == member.examples
+    inferred = await handle_code_edit_context(
+        CodeEditContextInput(org=org, namespace=ns, clues=["return 'ok'"], include_lessons=False)
+    )
+    assert inferred.resolved_by == "repository_clues"
+    assert inferred.definitions == clue.definitions
+    recovered = await handle_code_edit_context(
+        CodeEditContextInput(
+            org=org, namespace=ns, clues=["decode(self.payload.value)"], include_lessons=False
+        )
+    )
+    assert recovered.resolved_by == "repository_argument"
+    assert recovered.definitions == clue.definitions
+    await _ingest(repo, org, ns, path="src/worker.py", source=b"def run():\n    return 'ok'\n")
+    competing_files = await handle_code_edit_context(
+        CodeEditContextInput(org=org, namespace=ns, clues=["return 'ok'"], include_lessons=False)
+    )
+    assert not competing_files.definitions and competing_files.ambiguous
+    assert {candidate["path"] for candidate in competing_files.candidates} == {
+        "src/cli.py",
+        "src/worker.py",
+    }
     missing = await handle_code_edit_context(
         CodeEditContextInput(
             org=org,
