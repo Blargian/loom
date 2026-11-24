@@ -597,10 +597,12 @@ function sourceForTranslation(from) {
   return existsSync(english) ? readFileSync(english, "utf8") : null;
 }
 
-function englishRoute(from) {
+export function englishRoute(from) {
   const [locale, ...source] = from.split("/");
   if (!locales.includes(locale)) return "";
-  return `/docs/${source.join("/").replace(/\.md$/, "/")}`;
+  const path = source.join("/");
+  const route = path === "index.md" ? "" : path.replace(/index\.md$|\.md$/, "");
+  return `/docs/${route}`;
 }
 
 function gitBlob(text) {

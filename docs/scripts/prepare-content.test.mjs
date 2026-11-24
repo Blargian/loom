@@ -5,6 +5,7 @@ import { load } from "js-yaml";
 import { withContentMetadata } from "./content-metadata.mjs";
 import {
   escapeMdxPlaceholders,
+  englishRoute,
   normalizeTranslatedTitle,
   prepareLocalizedLandingDemo,
   prepareTranslatedMarkup,
@@ -180,6 +181,11 @@ test("marks a stale translation after its stamped source comment", () => {
     "<!-- i18n: source=docs/getting-started/quickstart.md blob=0000000000000000000000000000000000000000 model=test -->\n\n" +
       "> **Translation notice:** The English source has changed. Read the [English page](/docs/getting-started/quickstart/).\n\n# Inicio rápido\n",
   );
+});
+
+test("links stale translated index pages to their directory routes", () => {
+  assert.equal(englishRoute("ja/index.md"), "/docs/");
+  assert.equal(englishRoute("ja/guides/index.md"), "/docs/guides/");
 });
 
 test("keeps translated repository links outside the docs site", () => {
