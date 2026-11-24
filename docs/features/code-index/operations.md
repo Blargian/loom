@@ -313,6 +313,11 @@ grade (compiler edges are always 1.0) and `include_ambiguous` to add the call si
 resolver declined as a separate `candidate_sites` block. Read `epistemic` and `causes`
 on the answer ([overview.md](overview.md#reading-an-answer)).
 
+On the Python parser tier, `edge_kinds: ["reads"]` can follow member access
+through a top-level function's typed parameter or an imported value with a
+declared type.
+The graph records those accesses separately from function calls.
+
 **Example: impact of a diff.**
 
 ```python
