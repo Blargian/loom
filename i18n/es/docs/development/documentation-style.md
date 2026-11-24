@@ -43,7 +43,7 @@ nothing is close enough. This page explains each leg, how the rank is computed, 
 which settings move it.
 ```
 
-`llms.txt` lista la primera oración de ese párrafo para la página, y el sitio de documentación la usa como descripción de búsqueda de la página. Después, donde correspondan: el comportamiento visible para el usuario, las interfaces (operaciones, CLI, ajustes), cómo funciona, límites y modos de fallo, y enlaces a "Related". Las páginas de arquitectura añaden **Source entry points** (rutas y símbolos) e **Invariants**.
+El sitio de documentación usa la primera oración de ese párrafo como descripción de búsqueda de la página y genera `llms.txt` a partir de ella. Después, donde correspondan: el comportamiento visible para el usuario, las interfaces (operaciones, CLI, ajustes), cómo funciona, límites y modos de fallo, y enlaces a "Related". Las páginas de arquitectura añaden **Source entry points** (rutas y símbolos) e **Invariants**.
 
 <a id="prerequisites"></a>
 
@@ -108,7 +108,7 @@ Estas páginas se generan a partir del código. Edita la fuente y luego ejecuta 
 | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | [reference/configuration.md](https://github.com/ClickHouse/loom/blob/main/docs/reference/configuration.md)                           | comentarios sobre los campos en `server/settings/`                                     | `python scripts/codegen/settings_reference.py` |
 | [reference/operations.md](https://github.com/ClickHouse/loom/blob/main/docs/reference/operations.md)                                 | `server.operations.registry.ALL_OPERATIONS`                                            | `python scripts/codegen/docs_reference.py`     |
-| [`llms.txt`](https://github.com/ClickHouse/loom/blob/main/llms.txt) (raíz del repositorio) | el título de cada página y la primera frase de su párrafo inicial                 | `python scripts/codegen/docs_reference.py`     |
+| `llms.txt` (sitio de documentación)                                                    | los títulos de las páginas de documentación y los párrafos iniciales              | compilación del sitio Blume                    |
 | `reference/operations/<group>.md` (uno por grupo)                                     | los modelos de entrada y salida de las ops y los comentarios sobre sus campos          | `python scripts/codegen/docs_reference.py`     |
 | [reference/workers.md](https://github.com/ClickHouse/loom/blob/main/docs/reference/workers.md)                                       | `server/workers/registry.py` (`_WORKERS`)                                              | `python scripts/codegen/docs_reference.py`     |
 | [reference/cli.md](../reference/cli.md)                                               | la instantánea del analizador de `loom` `tests/unit/snapshots/cli_tree.json`           | `python scripts/codegen/docs_reference.py`     |
@@ -116,7 +116,7 @@ Estas páginas se generan a partir del código. Edita la fuente y luego ejecuta 
 | [reference/status.md](https://github.com/ClickHouse/loom/blob/main/docs/reference/status.md)                                         | la `maturity` de las ops y los ajustes booleanos de `server/settings/catalog.py` que se cargan como false | `python scripts/codegen/docs_reference.py`     |
 | [reference/schema.md](https://github.com/ClickHouse/loom/blob/main/docs/reference/schema.md)                                         | `schemas/schema.sql`                                                                   | `python scripts/codegen/docs_reference.py`     |
 
-En el sitio de documentación, `scripts/docs_site/hooks.py` sirve la copia en Markdown de cada página junto a la propia página, en su URL más `index.html.md` y, para el índice de una sección, en `<folder>.md`, indicada mediante una etiqueta `<link rel="alternate" type="text/markdown">` en la página; `llms.txt` con sus enlaces apuntando a esas copias; `llms-full.txt` (las páginas que explican qué es Loom y cómo empezar); y el `llms-install.md` del repositorio.
+En el sitio de documentación, Blume publica `llms.txt` y `llms-full.txt`. `llms-install.md` permanece en el repositorio.
 
 El sitio publica las páginas generadas desde `i18n/<language>/docs/` bajo `/<language>/`. El inglés es el idioma predeterminado y canónico. Cada página conserva su ruta relativa a docs bajo `/<language>/`, de modo que la página de inicio y el índice de casos de uso tienen rutas distintas. La página de inicio en inglés enlaza a cada página de inicio traducida disponible, o a su índice de casos de uso traducido cuando la página de inicio no está disponible. Cada página traducida enlaza a su fuente en inglés y a las traducciones equivalentes disponibles. Un aviso marca las traducciones cuyo blob de origen difiere de la página actual en inglés. La generación de traducciones permanece en `scripts/i18n/translate.py`; la compilación del sitio no llama a ningún proveedor de traducción.
 

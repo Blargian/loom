@@ -97,7 +97,7 @@ These pages are generated from the code or documentation source. Edit the source
 | [reference/schema.md](../reference/schema.md)               | `schemas/schema.sql`                                                                   | `python scripts/codegen/docs_reference.py`     |
 
 On the documentation site, Blume serves each page's Markdown copy beside the page and
-publishes `llms.txt`, `llms-full.txt`, and the repository's `llms-install.md`.
+publishes `llms.txt` and `llms-full.txt`. `llms-install.md` remains in the repository.
 
 The site publishes generated pages from `i18n/<language>/docs/` under `/<language>/`. English is the canonical default. Each page keeps its docs-relative path under `/<language>/`, so the homepage and use-case index have distinct routes. The English homepage links to each available translated homepage, or to its translated use-case index when the homepage is unavailable. Each translated page links to its English source and to the available equivalent translations. A notice marks translations whose source blob differs from the current English page. Translation generation stays in `scripts/i18n/translate.py`; the site build does not call a translation provider.
 
