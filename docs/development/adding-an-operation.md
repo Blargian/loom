@@ -14,7 +14,9 @@ flowchart LR
 
 The example is `calibration.get`, one of the smallest ops: `server/memory/api/models_calibration.py`, `server/memory/api/ops_calibration.py` and `server/memory/app/calibration.py`.
 
-## 1. Define the input and output models
+<Steps>
+
+<Step title="Define the input and output models">
 
 Put them in the group's models module, `server/<domain>/api/models_<group>.py`. A models module holds Pydantic wire models only: it imports no handler.
 
@@ -43,7 +45,9 @@ Rules for the models:
 - **No model-level "one of A or B" validators** on read inputs. The transport validates the body before authorization, so a raising `@model_validator` describes the op to a principal the namespace gate would refuse. Put the rule in the handler and raise `server.core.errors.ValidationError`. `tests/unit/test_op_inputs_after_gate.py` checks every registered op.
 - **To retire a field**, delete it. A client that still sends it is served, with the field named in `ignored_args` ([unknown and removed fields](../reference/http-api.md#unknown-and-removed-fields)).
 
-## 2. Write the handler
+</Step>
+
+<Step title="Write the handler">
 
 One handler module per group, under `server/<domain>/app/`. A handler is `async`, takes the input model and returns the output model. It imports the wire models at module top; the models never import a handler, so the import is acyclic:
 
@@ -64,7 +68,7 @@ async def handle_calibration_get(input: CalibrationGetInput) -> CalibrationGetOu
 - The transport tags ClickHouse queries with `log_comment`; a handler does nothing.
 - Read settings as `settings.<field>`, never `getattr(settings, ...)`.
 - If the op writes `loom.memory` or `loom.shared`, build rows with the builders in
-  `server/memory/store/rows.py` ([adding a table](adding-a-table.md#2-mirror-every-column-on-replacingmergetree-write-paths)).
+  `server/memory/store/rows.py` ([adding a table](adding-a-table.md)).
 
 ### Ops addressed by an org-wide id
 
@@ -84,7 +88,9 @@ if row is None:
 
 Answer as for a missing row, never 403: a 403 confirms the id exists in another tenant. Pass `Role.WRITER` and `strong=True` to `namespace_for_id` for a write, so the holders are read current. An op that must read the row first, such as `memory.redact`, checks it with `authz.row_in_scope` after the fetch ([row-scoped operations](../architecture/security.md#row-scoped-operations)).
 
-## 3. Declare the operation
+</Step>
+
+<Step title="Declare the operation">
 
 ```python
 from server.operations.base import Operation, Role
@@ -116,14 +122,16 @@ The declaration lives in the group's ops module, `server/<domain>/api/ops_<group
 | `required_role`               | yes      | `Role.VIEWER`, `WRITER`, `ADMIN`, `ORG_ADMIN` or `PLATFORM_ADMIN`.                                                                                                                                                                                                                               |
 | `audit`                       | no       | `True`: success writes one row to `loom.audit_log`. Set it for anything that changes memory, grants, policy or configuration.                                                                                                                                                                    |
 | `writes`                      | no       | The op changes stored state although a viewer may call it and a retry is safe (a feedback row, a seen-marker). A writer role or `audit=True` already says "writes".                                                                                                                              |
-| `maturity`                    | no       | `stable` (default) or `experimental`. See [step 5](#5-check-reach-and-maturity).                                                                                                                                                                                                                 |
+| `maturity`                    | no       | `stable` (default) or `experimental`. See the maturity check above.                                                                                                                                                                                                                              |
 | `skip_namespace_authz`        | no       | Skip the transport's namespace check for ops that act **on** a namespace (join, leave, register) or whose target only the handler can resolve (`memory.verify` by id, `erasure.request` by scope, `erasure.list` by caller role); the handler enforces its own rules. The role check still runs. |
 | `deployment_scoped`           | no       | The op reads facts about the deployment (its build, its registry), not any namespace's data; a scoped token passes with its best per-namespace role.                                                                                                                                             |
 | `row_scoped`                  | no       | Addressed by an org-wide id; the handler authorizes the row's scope (`namespace_for_id` before the read, or `row_in_scope` after it) and hides a foreign row as not found.                                                                                                                       |
 
 The op is **read-only** (MCP `readOnlyHint`, the `readonly` toolset) exactly when it is `idempotent`, `required_role == Role.VIEWER`, not `audit` and not `writes` (`Operation.read_only`). Clients that auto-approve read-only tools trust these flags.
 
-## 4. Decide MCP visibility
+</Step>
+
+<Step title="Decide MCP visibility">
 
 `server/operations/toolsets.py` decides where the op is listed:
 
@@ -134,7 +142,9 @@ The op is **read-only** (MCP `readOnlyHint`, the `readonly` toolset) exactly whe
 A listed op needs its description in `server/transport/mcp_descriptions.py`
 (`TOOL_DESCRIPTIONS`). Write it for the model: when to call the tool, what it returns, what not to use it for. A description about a changed fact interpolates `revision_policy()` from the same module instead of stating its own. Name another op by its dotted op name; each listing renames a listed op to its tool and marks an unlisted one ([MCP reference](../reference/mcp.md#tool-list)). Never write an op as a call (`op(args)`), inside a longer code span, or with a hand-written "(via loom_op)". An op name given as a field's example value goes in single quotes (`'memory.ask'`), which the listing leaves as written.
 
-## 5. Check reach and maturity
+</Step>
+
+<Step title="Check reach and maturity">
 
 An op's **reach** is derived (`Operation.reach`, `server/operations/reach.py`): its MCP roster membership plus a committed scan of the SDKs, `examples/`, `dev/` and `scripts/`, the plugin hooks, and the dashboard's `"/v1/<op>"` call sites. `{"http_only"}` means only a raw `/v1/*` POST reaches it.
 
@@ -144,7 +154,9 @@ Every op is on every surface or says why not in code. HTTP serves every op in th
 - A `stable` op is [listed under the MCP `all` toolset](../reference/operations.md#mcp-all-listing), or, if hidden from MCP, has another reach path, and is meant to have production callers; `python scripts/codegen/op_reach_census.py --call-counts --days 30` shows whether it has them. Declare a new op `experimental` unless it replaces a stable one.
 - Refresh the manifest: `python scripts/codegen/op_reach_census.py --write-manifest` (writes `server/operations/reach_manifest.py`).
 
-## 6. Write the tests
+</Step>
+
+<Step title="Write the tests">
 
 | Test                                                     | What it asks of your op                                                                                                                                                                                                                                                                                                      |
 | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -157,7 +169,9 @@ Every op is on every surface or says why not in code. HTTP serves every op in th
 
 If the leakage suite cannot synthesize a body for your op, it reports it; add a hint instead of skipping. An op that mutates the caller's own namespace goes in the suite's `_SKIP_OPS`, with the writer gate covered elsewhere. Integration tests need a running server (`LOOM_BASE_URL`) and skip without one. Mint tokens with the suite's helpers, not self-signup, which CI does not enable.
 
-## 7. Regenerate and run the gates
+</Step>
+
+<Step title="Regenerate and run the gates">
 
 ```bash
 python scripts/codegen/sdk_py_gen.py                       # sdk/python/loom/ops.py
@@ -175,6 +189,10 @@ make test-unit     # reach census, MCP listing budget
 CI fails when a generated file is stale. The generated SDK files give every client the op at once: `agent.call("calibration.get", {...})` in Python and TypeScript is typed against the new TypedDicts and interfaces. A hand-written method on an SDK client (`sdk/python/loom/<group>.py`) is optional; add one for a common verb. It counts as a reach path.
 
 `python scripts/codegen/wire_changelog.py <rev_a> <rev_b>` prints what changed for clients between two revisions. The release notes are built from it.
+
+</Step>
+
+</Steps>
 
 ## Before you open the PR
 

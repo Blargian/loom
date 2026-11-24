@@ -17,7 +17,9 @@ extension. Use a separate database, or a separate service, from the one Loom's
 CI tests the release `LOOM_PGCH_VERSION` names in `.github/workflows/ci.yml` on Postgres 16
 and 18 (`tests/integration/test_pg_clickhouse_live_ch.py`).
 
-## 1. Make a SQL user for the tenant
+<Steps>
+
+<Step title="Make a SQL user for the tenant">
 
 On the Loom side, as an operator ([access](../reference/sql-surface.md#access)):
 
@@ -27,7 +29,9 @@ loom sql-access grant --user acme_bi --org acme --namespaces support,research
 
 It prints the user's password once.
 
-## 2. Install the extension
+</Step>
+
+<Step title="Install the extension">
 
 The extension is in the `ghcr.io/clickhouse/pg_clickhouse:<postgres major>-<version>`
 images and on [PGXN](https://pgxn.org/dist/pg_clickhouse/), to build into a self-managed
@@ -56,7 +60,9 @@ As the owner:
 CREATE ROLE app_reader LOGIN PASSWORD '<password>';
 ```
 
-## 3. Point it at the ClickHouse service
+</Step>
+
+<Step title="Point it at the ClickHouse service">
 
 ```sql
 CREATE SERVER loom_ch FOREIGN DATA WRAPPER clickhouse_fdw
@@ -89,7 +95,9 @@ These are the extension's defaults, written down so a later release's defaults c
 one. A session that sets another setting fails in ClickHouse with `READONLY`: the SQL user's
 profile refuses it ([access](../reference/sql-surface.md#access)), whatever the role says.
 
-## 4. Import the views
+</Step>
+
+<Step title="Import the views">
 
 ```sql
 CREATE SCHEMA loom;
@@ -113,7 +121,9 @@ imported with, so to pick up new ones drop the schema (and any Postgres view bui
 tables) and run the import and the grants again:
 `DROP SCHEMA loom CASCADE; CREATE SCHEMA loom;`.
 
-## 5. Query and join
+</Step>
+
+<Step title="Query and join">
 
 ```sql
 -- The facts Loom holds about each account on the support team
@@ -131,6 +141,10 @@ GROUP BY day ORDER BY day;
 ```
 
 `value` is NULL where Loom withholds it; `value_withheld` says why.
+
+</Step>
+
+</Steps>
 
 ## Cost and scale
 

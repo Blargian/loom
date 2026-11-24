@@ -4,7 +4,9 @@ A headless bot runs with no person to paste a token, notice a silent failure or 
 "remember this". This guide covers the bot's identity, a connection check, three runtimes,
 what the bot writes, and how to diagnose a bot that has gone quiet.
 
-## 1. Give the bot an identity
+<Steps>
+
+<Step title="Give the bot an identity">
 
 The `loom` CLI ships in the server image and installs from a clone with `pip install -e .`.
 The SDK package (`clickhouse-loom`) has no CLI.
@@ -51,7 +53,9 @@ loom mint-token --subject ci-reviewer --org <org> --namespaces agent-ci --roles 
 
 See [tokens and grants](tokens-and-grants.md) for roles, lifetimes and rotation.
 
-## 2. Check the connection before the first run
+</Step>
+
+<Step title="Check the connection before the first run">
 
 ```bash
 LOOM_BASE_URL=https://<loom> LOOM_API_KEY="$(cat token.txt)" loom doctor --client
@@ -68,7 +72,9 @@ fix, and the exit code is non-zero, so the command works as a CI gate:
 
 `--json` emits the checks and the problem list as JSON for a pipeline that parses them.
 
-## 3. Connect the runtime
+</Step>
+
+<Step title="Connect the runtime">
 
 ### Claude Agent SDK or `claude -p`
 
@@ -151,15 +157,19 @@ async with Agent(org="acme", namespace="agent-nightly-triage", agent="nightly-tr
 See the [Python SDK reference](../reference/python-sdk.md) and
 [framework integrations](../features/integrations/frameworks.md).
 
-## 4. Decide what the bot writes
+</Step>
+
+<Step title="Decide what the bot writes">
 
 The plugins capture a coding session on their own. A bot outside them decides what to write.
 In short: record decisions and failures, not transcripts; recall once before a task, not once
 per step; hand a finished run's transcript to `memory.set_from_messages`; and report what the
 run relied on with `run.complete(memories_used=[...])`.
-[Agent integration](agent-integration.md#3-decide-what-to-write) covers each choice.
+[Agent integration](agent-integration.md) covers each choice.
 
-## 5. When the bot is quiet
+</Step>
+
+<Step title="When the bot is quiet">
 
 Run `loom doctor --client` on the bot's machine. It reports each of the usual causes on its
 own line:
@@ -170,6 +180,10 @@ own line:
 | 401 on every call                     | The token expired or was rotated                                                                    |
 | 403 on every write                    | The token is a `viewer` on the namespace the bot writes to                                          |
 | Captures never appear                 | A background flusher never delivered them: stranded `loom-flush-*.json` files in the temp directory |
+
+</Step>
+
+</Steps>
 
 ## Related
 

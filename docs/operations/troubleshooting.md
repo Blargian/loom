@@ -539,7 +539,7 @@ each field means is in [monitoring](./monitoring.md#health-checks).
   or `IDENTITY_INCOMPLETE` from a scoped token with no namespace in the body, is
   authorization, not a bug ([tokens and grants](../guides/tokens-and-grants.md#namespace-access)).
   Stranded `loom-flush-*.json` files in the temp directory are plugin captures that never
-  reached the server ([headless bots](../guides/headless-bots.md#5-when-the-bot-is-quiet)).
+  reached the server ([headless bots](../guides/headless-bots.md)).
 - **An MCP tool is missing from the listing.** Listings vary by the MCP URL's
   `?toolset=`, never by caller. Under `all`, an experimental op that neither the core nor
   the atomic roster lists is left out of the listing; it is still callable by name or

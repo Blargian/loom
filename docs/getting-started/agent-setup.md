@@ -44,7 +44,9 @@ This copy names no release, so its commands do not run as they are. Follow the
   what a check expects, or report `PASS` for a step that did not run. A `FAIL` line is a
   correct report.
 
-## 1. Install the release
+<Steps>
+
+<Step title="Install the release">
 
 ```sh
 mkdir -p ~/loom-agent-setup
@@ -55,10 +57,12 @@ curl -fsSL "https://github.com/ClickHouse/loom/releases/download/v<version>/inst
 
 The installer verifies the bundle's SHA-256, installs under `~/.loom`, starts the stack
 and waits for the server's `/v1/health`. If the command fails, the report is its `install`
-line alone; do not go on. The [quickstart](quickstart.md#1-boot-the-stack) says what the
+line alone; do not go on. The [quickstart](quickstart.md) says what the
 installer does in full.
 
-## 2. Install the plugin
+</Step>
+
+<Step title="Install the plugin">
 
 The plugin comes from the same release's source, so it matches the server:
 
@@ -86,7 +90,9 @@ with no token. **The person** now starts a new session of the agent (Codex: an i
 `codex` run, where they also approve the plugin's hooks), gives it this text again and
 says "continue at step 3". Steps 3 and 4 run in that session.
 
-## 3. Run the check
+</Step>
+
+<Step title="Run the check">
 
 Save this script as `loom-setup-check.py` and run `python3 loom-setup-check.py`. It uses
 only the Python standard library and talks to Loom over HTTP. It writes into the namespace
@@ -237,13 +243,19 @@ What each check must see:
 
 When `server` fails, the script writes nothing and runs no other check.
 
-## 4. Check the agent's connection
+</Step>
+
+<Step title="Check the agent's connection">
 
 Call your `loom_search` tool once, with the query `agent setup check`, and run
 `claude plugin list` (or `codex plugin list`). The line is
 `[PASS]  agent  loom_search answered` when the tool answers without an error and the list
 shows `loom@loom` enabled, otherwise
 `[FAIL]  agent  <the tool's error, or the plugin's status>`.
+
+</Step>
+
+</Steps>
 
 ## Report
 

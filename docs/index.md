@@ -36,7 +36,9 @@ One page per need, each saying what Loom does for it and where to start:
 [self-hosted on ClickHouse](use-cases/self-hosted-clickhouse.md) ·
 [all use cases](use-cases/index.md).
 
-## 1. Getting started
+<Steps>
+
+<Step title="Getting started">
 
 - [Overview](getting-started/overview.md): what Loom is, when it fits, prerequisites.
 - [What's included](getting-started/whats-included.md): Loom's main capabilities, each with its page.
@@ -50,7 +52,9 @@ One page per need, each saying what Loom does for it and where to start:
   installs a pinned release and proves it works, with a fixed report.
 - [Your first agent](getting-started/first-agent.md): an SDK tutorial.
 
-## 2. Install and run the server
+</Step>
+
+<Step title="Install and run the server">
 
 - [Deployment](operations/deployment.md): shapes, environment, providers, identity modes,
   proxy, images, production checklist.
@@ -72,7 +76,9 @@ One page per need, each saying what Loom does for it and where to start:
   [Copying a namespace to another Loom](operations/okf-sync.md) ·
   [Exporting usage to a data warehouse](operations/analytics-export.md)
 
-## 3. Connect agents
+</Step>
+
+<Step title="Connect agents">
 
 [Integrations](features/integrations/index.md) ·
 [MCP clients](features/integrations/mcp-clients.md) ·
@@ -86,7 +92,9 @@ One page per need, each saying what Loom does for it and where to start:
 [ClickStack](features/integrations/clickstack.md) ·
 [OKF](features/integrations/okf.md)
 
-## 4. SDK and API
+</Step>
+
+<Step title="SDK and API">
 
 [Reference index](reference/index.md) · [HTTP API](reference/http-api.md) ·
 [MCP](reference/mcp.md) · [Python SDK](reference/python-sdk.md) ·
@@ -98,7 +106,9 @@ One page per need, each saying what Loom does for it and where to start:
 [unknown and removed fields](reference/http-api.md#unknown-and-removed-fields) says how a
 client sees one the server no longer reads.
 
-## 5. Namespaces, access and the memory model
+</Step>
+
+<Step title="Namespaces, access and the memory model">
 
 - [Identities and namespaces](concepts/identities-and-namespaces.md): the tuple, roles,
   grants and read scope.
@@ -106,6 +116,10 @@ client sees one the server no longer reads.
   provenance.
 - [Retrieval and ranking](concepts/retrieval-and-ranking.md): legs, fusion, abstain,
   calibration.
+
+</Step>
+
+</Steps>
 
 ## Guides
 
@@ -142,7 +156,9 @@ client sees one the server no longer reads.
 - Tracker: [overview](features/tracker/overview.md) ·
   [record contract](features/tracker/record-contract.md)
 
-## 6. Code index
+<Steps>
+
+<Step title="Code index">
 
 [Overview](features/code-index/overview.md) ·
 [Repositories](features/code-index/repositories.md) ·
@@ -150,6 +166,10 @@ client sees one the server no longer reads.
 [History and PRs](features/code-index/history-and-prs.md) ·
 [Operations](features/code-index/operations.md) ·
 [Code-index operations runbook](operations/code-index-operations.md)
+
+</Step>
+
+</Steps>
 
 ## Architecture
 

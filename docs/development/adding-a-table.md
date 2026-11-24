@@ -14,7 +14,9 @@ flowchart TD
     H -->|yes| I["row builders + memory_versions mirror"]
 ```
 
-## 1. Write the migration and regenerate the schema
+<Steps>
+
+<Step title="Write the migration and regenerate the schema">
 
 [Migrations](migrations.md) owns the rules: numbering, what counts as additive, runner directives, sort-key rebuilds, and `make schema-dump` / `make schema-check` against the pinned ClickHouse. In short:
 
@@ -25,7 +27,9 @@ flowchart TD
 
 Until a deployment applies the migration, the client's schema guard refuses a read or write naming a table a pending migration would create, with `SCHEMA_PENDING`.
 
-## 2. Mirror every column on ReplacingMergeTree write paths
+</Step>
+
+<Step title="Mirror every column on ReplacingMergeTree write paths">
 
 `loom.memory`, `loom.shared` and `loom.memory_embeddings` are `ReplacingMergeTree(version)` tables read with `FINAL`. Every handler that writes a new version row (set, tombstone, restore, touch, `update_by_id`, `bulk_set`, promote, demote) carries **every** persisted column forward. A column omitted on a later version row reads as zero under `FINAL`.
 
@@ -44,7 +48,9 @@ When you add a column to one of these tables:
 
 Any new write path sets the server-stamped `actor` and `source_class` (`server.memory.domain.provenance`), never values from the request body.
 
-## 3. Classify the table for erasure
+</Step>
+
+<Step title="Classify the table for erasure">
 
 Erasure is a saga (`server/erasure/app/saga.py`). Its last step is a residue census over every table the read paths touch; any live row in scope fails the saga closed. `tests/unit/test_every_table_is_classified.py` fails for any `CREATE TABLE` in `schema.sql` that is not in exactly one of three lists in `server/erasure/store/census.py`:
 
@@ -72,11 +78,17 @@ For a `_CENSUS` table:
 Test the step's statement shape with a stub client, as `tests/unit/test_erasure_repo.py` and
 `tests/unit/test_erasure_late_steps.py` do.
 
-## 4. Classify any mutation
+</Step>
+
+<Step title="Classify any mutation">
 
 An `ALTER TABLE loom.<t> UPDATE|DELETE` is a ClickHouse mutation: it rewrites parts asynchronously and is not transactional. `tests/unit/test_clickhouse_mutation_inventory.py` counts every visible one under `server/` against `_EXPECTED_MUTATIONS`. A new one fails until you add it there with a comment saying why.
 
 Prefer a new version row on a `ReplacingMergeTree`, a tombstone column, or a lightweight `DELETE FROM`. Never use a mutation as a claim or lock a request waits on; the task inbox claims through a `KeeperMap` lease table instead.
+
+</Step>
+
+</Steps>
 
 ## Checklist
 
