@@ -8,7 +8,8 @@ import json
 import logging
 import re
 import time
-from dataclasses import replace
+from collections import defaultdict
+from dataclasses import dataclass, replace
 from typing import Any
 
 from server.code.api.models_grep import (
@@ -30,6 +31,7 @@ from server.code.app.grep_source import (
     GREP_MATCH_TEXT_CHARS,
     ContextSource,
     collect_contexts,
+    match_revisions,
     page_contexts,
     recover_source_chunks,
 )
@@ -263,6 +265,87 @@ def _as_of_early(repo: CodeRepo, org: str, ns: str) -> asyncio.Future[dict[str, 
     return asyncio.ensure_future(index_as_of(repo, org, ns))
 
 
+@dataclass
+class _GrepLineScan:
+    chunks: list[dict[str, Any]]
+    matches: list[dict[str, Any]]
+    match_commits: dict[tuple[str, int], str]
+    chunks_matched: int
+    truncated: bool
+    route: str
+    note: str
+    related_pattern: str
+
+
+async def _scan_grep_lines(
+    repo: CodeRepo,
+    org: str,
+    ns: str,
+    input: CodeGrepInput,
+    *,
+    route: str,
+    scope: Any,
+    line_re: Any,
+    budget: code_deadline.Budget | None,
+    first_page: bool,
+    limit: int,
+) -> _GrepLineScan:
+    scan_limit = min(200, limit * 3)
+    with code_span("grep.chunks", route=route) as sp:
+        # over-fetch chunks: several lines can match inside one chunk, and
+        # several chunks can be windows of one oversized unit
+        chunks, line_re, suffix, note = await _fetch_grep_chunks(
+            repo,
+            org,
+            ns,
+            input,
+            scope=scope,
+            limit=scan_limit,
+            line_re=line_re,
+            budget=budget,
+        )
+        route += suffix
+        scan_input = input
+        related_pattern = _related_grep_pattern(input) if not chunks and first_page else ""
+        if related_pattern and _second_scan_allowed(budget, "related source scan"):
+            scan_input = input.model_copy(update={"pattern": related_pattern})
+            chunks, _, _, _ = await _fetch_grep_chunks(
+                repo,
+                org,
+                ns,
+                scan_input,
+                scope=scope,
+                limit=scan_limit,
+                line_re=None,
+                budget=budget,
+            )
+            route += "+related_argument"
+        span_attrs(sp, chunks_matched=len(chunks))
+
+    matched_chunks = len(chunks)
+    chunks, matches, match_commits, scan_capped = await _read_line_matches(
+        repo,
+        org,
+        ns,
+        chunks,
+        scan_input,
+        line_re,
+        limit + _GREP_POOL_EXTRA,
+        budget,
+    )
+
+    return _GrepLineScan(
+        chunks=chunks,
+        matches=matches,
+        match_commits=match_commits,
+        chunks_matched=matched_chunks,
+        truncated=scan_capped or len(matches) > limit or matched_chunks >= scan_limit,
+        route=route,
+        note=note,
+        related_pattern=related_pattern,
+    )
+
+
 async def _grep_lines(
     repo: CodeRepo,
     org: str,
@@ -280,61 +363,22 @@ async def _grep_lines(
     """mode=matches: matching lines with the enclosing unit's span."""
     limit = input.effective_limit
     served_limit = page_limit or limit
-    scan_limit = min(200, limit * 3)
     as_of = _as_of_early(repo, org, ns)  # Beside the reads
-    with code_span("grep.chunks", route=route) as sp:
-        # over-fetch chunks: several lines can match inside one chunk, and
-        # several chunks can be windows of one oversized unit
-        chunks, line_re, suffix, note = await _fetch_grep_chunks(
-            repo,
-            org,
-            ns,
-            input,
-            scope=scope,
-            limit=scan_limit,
-            line_re=line_re,
-            budget=budget,
-        )
-        route += suffix
-        scan_input = input
-        related_pattern = _related_grep_pattern(input) if not chunks and not offset else ""
-        if related_pattern and _second_scan_allowed(budget, "related source scan"):
-            scan_input = input.model_copy(update={"pattern": related_pattern})
-            chunks, _, _, _ = await _fetch_grep_chunks(
-                repo,
-                org,
-                ns,
-                scan_input,
-                scope=scope,
-                limit=scan_limit,
-                line_re=None,
-                budget=budget,
-            )
-            route += "+related_argument"
-        span_attrs(sp, chunks_matched=len(chunks))
-
-    matched_chunks = len(chunks)
-    chunks = await recover_source_chunks(
-        repo, org, ns, chunks, max_chars=_LINE_SCAN_MAX_CHARS, budget=budget
+    scan = await _scan_grep_lines(
+        repo,
+        org,
+        ns,
+        input,
+        route=route,
+        scope=scope,
+        line_re=line_re,
+        budget=budget,
+        first_page=not offset,
+        limit=limit,
     )
-    spans = await _unit_spans(repo, org, ns, chunks)
-    # extract past the page: the extra lines become the continuation pool. Off the event
-    # loop: a scan of 200 chunks must not stall every other request on this worker.
-    match_commits: dict[tuple[str, int], str] = {}
-    matches, scan_capped = await asyncio.to_thread(
-        _matching_lines,
-        chunks,
-        spans,
-        scan_input,
-        line_re,
-        limit + _GREP_POOL_EXTRA,
-        match_commits=match_commits,
-    )
-
-    truncated = scan_capped or len(matches) > limit or matched_chunks >= scan_limit
+    route, related_pattern, note = scan.route, scan.related_pattern, scan.note
     trace_run_id = new_trace_run_id()
-    pool_matches = matches
-    matches = matches[offset : offset + served_limit]
+    matches = scan.matches[offset : offset + served_limit]
     context: dict[str, Any] = {}
     context_source: ContextSource = {}
     context_lines = input.context_lines
@@ -348,38 +392,60 @@ async def _grep_lines(
     if context_lines:
         context_source = await asyncio.to_thread(
             collect_contexts,
-            chunks,
-            pool_matches,
+            scan.chunks,
+            scan.matches,
             context_lines,
             _LINE_SCAN_MAX_CHARS,
-            match_commits=match_commits,
+            match_commits=scan.match_commits,
         )
         context = page_contexts(context_source, matches, context_lines)
-    bodies = await definitions_for(input, matches, budget, match_commits=match_commits)
+    bodies = await definitions_for(input, matches, budget, match_commits=scan.match_commits)
     neighbours, anchors_capped, neighbour_tokens, route = await _grep_neighbours(
         repo, org, ns, input, matches, route, budget=budget
     )
-    coverage = await asyncio.to_thread(_line_coverage_fields, chunks, budget)
+    coverage = await asyncio.to_thread(_line_coverage_fields, scan.chunks, budget)
+    prefix_related = None
+    if not (related_pattern or offset or scan.truncated or coverage.get("partial")):
+        prefix_related, prefix_coverage = await _related_prefix_excerpts(
+            repo,
+            org,
+            ns,
+            input,
+            scope=scope,
+            matches=matches,
+            match_commits=scan.match_commits,
+            limit=served_limit,
+            budget=budget,
+        )
+        coverage.update(prefix_coverage)
+        if prefix_related is not None:
+            route += "+related_call_prefix"
     next_cursor = ""
     if not related_pattern:
         next_cursor = _issue_grep_cursor(
             input,
             org,
             ns,
-            pool_matches,
+            scan.matches,
             served=offset + served_limit,
             run_id=trace_run_id,
-            chunks_matched=matched_chunks,
-            truncated=truncated,
+            chunks_matched=scan.chunks_matched,
+            truncated=scan.truncated,
             partial=bool(coverage.get("partial")),
             partial_reason=str(coverage.get("partial_reason") or ""),
             context_source=context_source,
-            match_commits=match_commits,
+            match_commits=scan.match_commits,
         )
     # one entry per matched FILE (ids and paths alike — grep has no unit ids,
     # so the outcome fold skips this op; the paths still feed opened_file)
-    files = list(dict.fromkeys(m["path"] for m in matches))
-    risk = "medium" if matches and related_pattern else "low" if matches else "abstain"
+    returned = matches + (prefix_related.matches if prefix_related is not None else [])
+    files = list(dict.fromkeys(m["path"] for m in returned))
+    risk = "low" if returned else "abstain"
+    if (matches and related_pattern) or (prefix_related and prefix_related.matches):
+        risk = "medium"
+    related_tokens = (
+        sum(len(row["text"]) for row in prefix_related.contexts) // 4 if prefix_related else 0
+    )
     schedule_code_trace(
         org=org,
         ns=ns,
@@ -391,11 +457,12 @@ async def _grep_lines(
         returned_paths=files,
         returned_scores=[],
         top_k=served_limit,
-        tokens_returned=sum(len(m["text"]) for m in matches) // 4
+        tokens_returned=sum(len(m["text"]) for m in returned) // 4
         + _context_tokens(context)
+        + related_tokens
         + neighbour_tokens
         + definitions_tokens(bodies),
-        abstain=not matches,
+        abstain=not returned,
         retrieval_risk=risk,
         embedding_model="",
         started_monotonic=started,
@@ -404,23 +471,23 @@ async def _grep_lines(
         consumer=input.consumer,
         agent=input.agent,
         user_id=input.user_id,
-        chunks_matched=matched_chunks,
+        chunks_matched=scan.chunks_matched,
         path_prefix=input.path_prefix,
     )
     set_code_span_attributes(
         route=route,
-        results=len(matches),
-        chunks_matched=matched_chunks,
+        results=len(returned),
+        chunks_matched=scan.chunks_matched,
         path_prefix=input.path_prefix,
-        truncated=truncated,
-        abstain=not matches,
+        truncated=scan.truncated,
+        abstain=not returned,
         retrieval_risk=risk,
         consumer=input.consumer,
     )
     if (
         not matches
         and not note
-        and not truncated
+        and not scan.truncated
         and not coverage.get("partial")
         and input.mode == "matches"
         and offset == 0
@@ -430,19 +497,23 @@ async def _grep_lines(
             "No exact match in the indexed scope. Try shorter known fragments together in "
             "a pattern list, code.symbol for a known name, or code.search for behavior."
         )
-    related = None
+    related = prefix_related
+    if prefix_related and prefix_related.matches:
+        note = "Related source shows the call prefix's argument in other scopes."
+        if not matches:
+            note = "No exact match in the indexed scope. " + note
     if related_pattern and matches:
         related = RelatedGrepEvidence(
-            pattern=related_pattern, matches=matches, truncated=truncated, **bodies, **context
+            pattern=related_pattern, matches=matches, truncated=scan.truncated, **bodies, **context
         )
         note = "No exact match in the indexed scope. Related source matches the call's argument."
     output = CodeGrepOutput(
-        matches=matches if related is None else [],
+        matches=[] if related_pattern else matches,
         related=related,
         next_cursor=next_cursor,
         has_more=bool(next_cursor),
-        chunks_matched=0 if related_pattern else matched_chunks,
-        truncated=truncated and not related_pattern,
+        chunks_matched=0 if related_pattern else scan.chunks_matched,
+        truncated=scan.truncated and not related_pattern,
         as_of=await as_of,
         note=note,
         trace_run_id=trace_run_id,
@@ -450,18 +521,20 @@ async def _grep_lines(
         anchors=len(neighbours),
         anchors_capped=anchors_capped,
         neighbour_tokens=neighbour_tokens,
-        **({**bodies, **context} if related is None else {}),
+        **({**bodies, **context} if not related_pattern else {}),
         **coverage,
     )
-    output._match_commits = match_commits
+    output._match_commits = scan.match_commits
     return output
 
 
 _IDENTIFIER = r"[^\W\d]\w*"
-_QUALIFIED_ARGUMENT = re.compile(
+_CALL_PREFIX = (
     rf"{_IDENTIFIER}(?:(?:\.|::){_IDENTIFIER})*\([ \t]*"
-    rf"({_IDENTIFIER}(?:\.{_IDENTIFIER})+)[ \t]*\)"
+    rf"({_IDENTIFIER}(?:\.{_IDENTIFIER})+)[ \t]*"
 )
+_QUALIFIED_ARGUMENT = re.compile(_CALL_PREFIX + r"\)")
+_QUALIFIED_ARGUMENT_PREFIX = re.compile(_CALL_PREFIX)
 
 
 def _related_grep_pattern(input: CodeGrepInput) -> str:
@@ -473,6 +546,159 @@ def _related_grep_pattern(input: CodeGrepInput) -> str:
 def qualified_call_argument(pattern: str) -> str:
     call = _QUALIFIED_ARGUMENT.fullmatch(pattern.strip())
     return call[1] if call else ""
+
+
+async def _read_line_matches(
+    repo: CodeRepo,
+    org: str,
+    ns: str,
+    chunks: list[dict[str, Any]],
+    input: CodeGrepInput,
+    line_re: Any,
+    keep: int,
+    budget: code_deadline.Budget | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[tuple[str, int], str], bool]:
+    chunks = await recover_source_chunks(
+        repo, org, ns, chunks, max_chars=_LINE_SCAN_MAX_CHARS, budget=budget
+    )
+    spans = await _unit_spans(repo, org, ns, chunks)
+    # Scanning up to 200 chunks must not stall other requests on this worker.
+    commits: dict[tuple[str, int], str] = {}
+    matches, capped = await asyncio.to_thread(
+        _matching_lines, chunks, spans, input, line_re, keep, match_commits=commits
+    )
+    return chunks, matches, commits, capped
+
+
+def _shares_grep_scope(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    """Two scans can derive different windows for the same retained definition."""
+    return bool(
+        left["scope"]
+        and left["scope"] == right["scope"]
+        and left["scope_start_line"]
+        and right["scope_start_line"]
+        and left["scope_start_line"] <= right["scope_end_line"]
+        and right["scope_start_line"] <= left["scope_end_line"]
+    )
+
+
+async def _related_prefix_excerpts(
+    repo: CodeRepo,
+    org: str,
+    ns: str,
+    input: CodeGrepInput,
+    *,
+    scope: Any,
+    matches: list[dict[str, Any]],
+    match_commits: dict[tuple[str, int], str],
+    limit: int,
+    budget: code_deadline.Budget | None,
+) -> tuple[RelatedGrepEvidence | None, dict[str, Any]]:
+    if not input.related_on_prefix or input.regex or not isinstance(input.pattern, str):
+        return None, {}
+    call = _QUALIFIED_ARGUMENT_PREFIX.fullmatch(input.pattern.strip())
+    if call is None or not _second_scan_allowed(budget, "related call prefix scan"):
+        return None, _partial_fields(budget)
+    try:
+        async with asyncio.timeout(None if budget is None else budget.left_ms() / 1000):
+            return await _read_prefix_excerpts(
+                repo, org, ns, input, call[1], scope, matches, match_commits, limit, budget
+            )
+    except TimeoutError:
+        reason = "related call prefix scan timed out"
+    except Exception as error:  # noqa: BLE001 — preserve exact evidence on optional read failure
+        logger.debug("related call prefix scan failed: %s", type(error).__name__)
+        reason = "related call prefix scan failed"
+    return None, {"partial": True, "partial_reason": reason}
+
+
+async def _read_prefix_excerpts(
+    repo: CodeRepo,
+    org: str,
+    ns: str,
+    input: CodeGrepInput,
+    argument: str,
+    scope: Any,
+    matches: list[dict[str, Any]],
+    match_commits: dict[tuple[str, int], str],
+    limit: int,
+    budget: code_deadline.Budget | None,
+) -> tuple[RelatedGrepEvidence | None, dict[str, Any]]:
+    scan_limit = min(200, limit * 3)
+    kw = {"scope": scope} if scope.has_path_filters else {}
+    chunks = await _bounded_scan(
+        budget,
+        repo.grep_chunks,
+        org,
+        ns,
+        argument,
+        regex=False,
+        case_sensitive=input.case_sensitive,
+        path_prefix=input.path_prefix,
+        limit=scan_limit,
+        **kw,
+    )
+    scanned = len(chunks)
+    # A longer name sharing the prefix is a different argument.
+    line_re = re.compile(
+        rf"(?<![\w.]){re.escape(argument)}(?!\w|\.\w)",
+        0 if input.case_sensitive else re.IGNORECASE,
+    )
+    chunks, candidates, commits, capped = await _read_line_matches(
+        repo, org, ns, chunks, input, line_re, limit + _GREP_POOL_EXTRA, budget
+    )
+    exact_by_path: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for match in matches:
+        exact_by_path[match["path"]].append(match)
+    exact_lines = {(match["path"], match["line"]) for match in matches}
+    exact_revisions = match_revisions(matches, match_commits)
+    related_revisions = match_revisions(candidates, commits)
+    other_sites = [
+        match
+        for match in candidates
+        if (match["path"], match["line"]) not in exact_lines
+        and not any(_shares_grep_scope(match, hit) for hit in exact_by_path.get(match["path"], ()))
+    ]
+    related = [
+        match
+        for match in other_sites
+        if match["path"] in related_revisions
+        and (
+            match["path"] not in exact_by_path
+            or exact_revisions.get(match["path"]) == related_revisions[match["path"]]
+        )
+    ]
+    coverage = await asyncio.to_thread(_line_coverage_fields, chunks, budget)
+    if len(related) != len(other_sites):
+        coverage.update(
+            partial=True,
+            partial_reason=_notes(
+                str(coverage.get("partial_reason", "")),
+                "related source omitted where its revision could not be verified",
+            ),
+        )
+    truncated = (
+        capped or len(related) > limit or scanned >= scan_limit or bool(coverage.get("partial"))
+    )
+    if not related and not truncated:
+        return None, coverage
+    page = related[:limit]
+    radius = (
+        input.context_lines
+        if "context_lines" in input.model_fields_set
+        else RELATED_GREP_CONTEXT_LINES
+    )
+    context = {}
+    if radius and page:
+        source = await asyncio.to_thread(
+            collect_contexts, chunks, page, radius, _LINE_SCAN_MAX_CHARS, match_commits=commits
+        )
+        context = page_contexts(source, page, radius)
+    evidence = RelatedGrepEvidence(pattern=argument, matches=page, truncated=truncated, **context)
+    match_commits.update(
+        {key: commits[key] for match in page if (key := (match["path"], match["line"])) in commits}
+    )
+    return evidence, coverage
 
 
 async def _grep_neighbours(
@@ -532,6 +758,7 @@ async def _grep_neighbours(
             repo, org, ns, anchors, rows, input.neighbour_k
         )
     except Exception:
+        # A failed graph read leaves the grep hits intact.
         logger.warning("code.grep: neighbours block failed for %r", input.pattern, exc_info=True)
         return [], False, 0, route
     return entries, capped, tokens, route + "+neighbours"
@@ -652,6 +879,7 @@ def _grep_trace_args(input: CodeGrepInput, *, context_lines: int | None = None) 
         "deadline_ms",
         "include_body",
         "related_on_miss",
+        "related_on_prefix",
         "context_lines",
         context_lines=context_lines,
         paged=bool(input.cursor) or None,
@@ -1239,6 +1467,7 @@ async def _message_literal_fallback(
                 "regex": False,
                 "neighbours": None,
                 "related_on_miss": False,
+                "related_on_prefix": False,
             }
         ),
         route=route + "+literal_fallback",
