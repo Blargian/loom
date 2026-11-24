@@ -40,6 +40,7 @@ from server.transport.mcp_identity import (
 )
 from server.transport.mcp_op import keep_first_marks
 from server.transport.mcp_op import reachable as loom_op_reachable
+from server.transport.mcp_schemas import resolve_schema_profile
 from server.transport.mcp_tools import (
     _emit_mcp_event,
     assistant_connection,
@@ -352,17 +353,42 @@ def _tool_routing(toolset: str | None) -> str:
     )
 
 
+def _bound_coding_connection(toolset: str | None) -> bool:
+    from server.settings import settings
+
+    return (
+        resolve_toolset(toolset, settings.mcp_toolset) == "coding"
+        and current_code_scope() is not None
+    )
+
+
+def _linked_history_guidance(task_pack: str | None) -> str:
+    return (
+        "For prior decisions or procedures beyond linked code lessons, use "
+        f"{task_pack} with the task as `query`. "
+    )
+
+
 def _loom_rules(toolset: str | None, defaults: dict[str, Any] | None) -> str:
     """The Loom-first rules with the caller's default workspace baked in, naming
     the tools the connection's ``toolset`` listing carries."""
     tool = _tool_refs(toolset)
     collections = knowledge_search_reads_collections()
+    if not _bound_coding_connection(toolset):
+        task_context = (
+            f"With a default memory namespace, call {tool['context.pack']} first with the task "
+            "as `query`, for the memories, decisions and procedures that bear on it in one "
+            f"bounded bundle. Skip it when {FIRST_STEP_HOOK}. "
+        )
+    elif defaults and defaults.get("namespace"):
+        task_context = _linked_history_guidance(tool["context.pack"])
+        task_context += f"Skip it when {FIRST_STEP_HOOK}. "
+    else:
+        task_context = "Read indexed source and its linked lessons for repository work. "
     head = (
         "**Loom-first mode active for this conversation.**\n\n"
         + _tool_routing(toolset)
-        + "**1. Task context.** With a default memory namespace, call "
-        f"{tool['context.pack']} first with the task as `query`, for the memories, decisions and "
-        f"procedures that bear on it in one bounded bundle. Skip it when {FIRST_STEP_HOOK}. "
+        + f"**1. Task context.** {task_context}"
         "For one fact, rule 2's search alone is enough.\n\n"
         "**2. Recall lookup order.** When I ask about preferences, "
         "decisions, family/relationships, work, bills, contracts, "
@@ -492,7 +518,9 @@ async def _emit_initialize_event(auth: Any, client_name: str | None) -> None:
         log.warning("initialize ledger row failed (non-fatal): %s", e)
 
 
-async def _initialize_instructions(auth: Any, toolset: str | None = None) -> str:
+async def _initialize_instructions(
+    auth: Any, toolset: str | None = None, *, schema_profile: str | None = None
+) -> str:
     """Session-start instructions for the `initialize` result: the rules, the
     code scope, the workspace, then the profile. Coding connections use fixed
     wording for implicit scopes and read usage hints during the session. Other
@@ -508,7 +536,14 @@ async def _initialize_instructions(auth: Any, toolset: str | None = None) -> str
         return _assistant_primer(await _caller_defaults(auth, assistant=True))
     defaults = await _caller_defaults(auth)
     coding = "coding" in toolset_parts(toolset)
-    rules = _coding_instructions(toolset, defaults) if coding else _loom_rules(toolset, defaults)
+    compact = toolset == "coding" and (
+        resolve_schema_profile(schema_profile, settings.mcp_schema_profile) == "compact"
+    )
+    rules = (
+        _coding_instructions(toolset, defaults, compact=compact)
+        if coding
+        else _loom_rules(toolset, defaults)
+    )
     scope = current_code_scope()
     scope_line = ""
     if scope:
@@ -539,7 +574,9 @@ def _coding_workspace_line(defaults: dict[str, Any] | None) -> str:
     return " The default memory namespace is filled in when a call names none."
 
 
-def _coding_instructions(toolset: str | None, defaults: dict[str, Any] | None = None) -> str:
+def _coding_instructions(
+    toolset: str | None, defaults: dict[str, Any] | None = None, *, compact: bool = False
+) -> str:
     """Code and memory routing for coding clients, including clients without hooks."""
     tool = _tool_refs(toolset)
     save = tool["memory.set"]
@@ -566,14 +603,16 @@ def _coding_instructions(toolset: str | None, defaults: dict[str, Any] | None = 
             ("code.impact", "for change effects"),
             ("code.context_pack", "for a task briefing"),
         )
-        if tool[name]
+        if tool[name] and (not compact or name in {"code.search", "code.grep"})
     ]
     definition_hint = (
         "Before editing a named definition, read its source and tests with "
         f"{tool['code.edit_context']}. "
         if tool["code.edit_context"]
         else ""
-    ) + (f"Inspect a definition with {tool['code.symbol']}. " if tool["code.symbol"] else "")
+    )
+    if not compact and tool["code.symbol"]:
+        definition_hint += f"Inspect a definition with {tool['code.symbol']}. "
     route_hint = "Use " + "; ".join(routes) + ". " if routes else ""
     code = (
         "\n\nUse Loom first to search and read unchanged indexed source, including tests. "
@@ -587,15 +626,21 @@ def _coding_instructions(toolset: str | None, defaults: dict[str, Any] | None = 
         else ""
     )
     # A code-only token can have no default memory workspace.
-    context = (
-        f"\n\nFirst step of each task: call {tool['context.pack']} with "
-        + "the task as `query`. "
-        + f"Skip it when {FIRST_STEP_HOOK}."
-        if defaults and defaults.get("namespace") and tool["context.pack"]
-        else ""
-    )
+    context = ""
+    if defaults and defaults.get("namespace") and tool["context.pack"]:
+        if _bound_coding_connection(toolset):
+            context = "\n\n" + _linked_history_guidance(tool["context.pack"])
+        else:
+            context = (
+                f"\n\nFirst step of each task: call {tool['context.pack']} "
+                "with the task as `query`. "
+            )
+        context += f"Skip it when {FIRST_STEP_HOOK}."
     discovery = (
-        "Find saved knowledge, documents, code, issues, tasks and records with `loom_op` "
+        'Find other Loom operations with `loom_op(op="help", query="<goal>")`. '
+        "Writes need user intent and permission."
+        if compact
+        else "Find saved knowledge, documents, code, issues, tasks and records with `loom_op` "
         '(`op="help"`, `query="<goal>"`). Writes need user intent and permission. '
         "Use `loom_op` for unlisted operations; never invent an unlisted tool name, "
         "and make only calls needed for the task."

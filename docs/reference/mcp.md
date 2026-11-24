@@ -30,6 +30,11 @@ Query parameters on the URL select what `tools/list` shows for that connection:
   `full` (adds `outputSchema`) or `compact` (the first paragraph and the
   argument tree).
 
+Compact coding connections describe the common source workflows in the
+startup instructions. Find the other tools through discovery. When the
+`coding` toolset is bound to a repository, the primer uses the task context pack
+for prior decisions or procedures beyond the lessons returned with indexed source.
+
 With the automatic loading policy, compact coding connections load
 `code.edit_context` and `code.grep` up front. Use `code.edit_context` with a
 definition name or location to read implementation, indexed tests, and linked
