@@ -3,5 +3,11 @@
   "framework": "astro",
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
-  "cleanUrls": true
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/robots.txt",
+      "destination": "/docs/robots.txt"
+    }
+  ]
 }
