@@ -4,6 +4,7 @@ import { load } from "js-yaml";
 
 import { withContentMetadata } from "./content-metadata.mjs";
 import {
+  escapeMdxPlaceholders,
   normalizeTranslatedTitle,
   prepareLocalizedLandingDemo,
   prepareTranslatedMarkup,
@@ -148,6 +149,13 @@ test("sets the search title and description on a translated docs homepage", () =
       '  description: "AI 에이전트를 위한 공유 메모리와 코드 인덱스."\n---\n\n' +
       `${stamp}\n\n문서 본문.\n`,
   );
+});
+
+test("escapes uppercase placeholders without rewriting HTML", () => {
+  const source = "<details>\n<summary>Schedule</summary>\nOn <YYYY-MM-DD>.\n</details>\n`<token>`\n";
+  const expected = "<details>\n<summary>Schedule</summary>\nOn &lt;YYYY-MM-DD&gt;.\n</details>\n`<token>`\n";
+
+  assert.equal(escapeMdxPlaceholders(source), expected);
 });
 
 test("keeps translated repository links outside the docs site", () => {

@@ -496,8 +496,8 @@ function promoteComponentPages() {
   }
 }
 
-/** Escape Markdown placeholders that MDX would otherwise parse as JSX tags. */
-function escapeMdxPlaceholders(text) {
+/** Escape uppercase Markdown placeholders that MDX would otherwise parse as JSX tags. */
+export function escapeMdxPlaceholders(text) {
   let fenced = false;
   return text
     .split("\n")
@@ -508,7 +508,7 @@ function escapeMdxPlaceholders(text) {
         .split(/(`[^`]*`)/)
         .map((part, index) => {
           if (index % 2) return part;
-          return part.replace(/<(?!\/?(?:Steps|Step)(?:\s|>))([A-Za-z][A-Za-z0-9_-]*)>/g, "&lt;$1&gt;");
+          return part.replace(/<([A-Z][A-Z0-9_-]*)>/g, "&lt;$1&gt;");
         })
         .join("");
     })
