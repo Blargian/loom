@@ -590,22 +590,23 @@ Read implementation, relevant indexed tests, and linked lessons before editing.
 | `agent` | `str` | `'-'` | The writing or reading agent; `'-'` or `'*'` means any agent where the op allows it. |
 | `user_id` | `str` | `'-'` | The end user the row belongs to; `'-'` for none. |
 | `consumer` | `str` | `''` | trace attribution: which integration is calling (clickgap\|claude-code\|…) |
-| `name` | `str` | required | Definition name, path:symbol, or path:line inside a function. |
+| `name` | `str` | required | Definition name, path:symbol, or path:line. |
+| `clues` | `list[str]` | *(computed)* | Literal code fragments to locate the edit target in the named file. |
 
 | Output field | Type | Meaning |
 | --- | --- | --- |
-| `definitions` | `list[CodeUnit]` | The resolved definitions (at most 10), fitted to `token_budget`; empty when nothing resolved (see `candidates`) or on a presence answer. |
+| `definitions` | `list[CodeUnit]` | Up to 10 name matches, or the members matched by file clues, fitted to `token_budget`. |
 | `lessons_left_out` | `int` | Whole linked lessons omitted to preserve definitions within an explicit request budget. |
 | `ambiguous` | `bool` | True when the served definitions carry more than one distinct name/signature pair. |
 | `hierarchy` | `dict[str, list[dict[str, Any]]]` | For a class / interface / enum definition, its type hierarchy from the `inherits` edges of both tiers, folded by qualified name: {"supertypes": [...], "subtypes": [...]} of {symbol, kind, via (extends \| implements), tier, confidence, path… |
-| `candidates` | `list[dict[str, Any]]` | When nothing resolved: cheap fuzzy candidates (names + paths only). |
+| `candidates` | `list[dict[str, Any]]` | Source pointers when nothing resolved, or other hits outside a file-clue target. |
 | `tokens_returned` | `int` | Estimated tokens of the answer: definitions, uses, cited documents, neighbours and hierarchy blocks together. |
 | `trace_run_id` | `str` | Id of this call's trace row; pass it to `code.outcome`. |
 | `uses` | `list[dict[str, Any]] \| dict[str, Any]` | uses=true: {path, line, text, scope, scope_start_line, scope_end_line, kind} per line mentioning the symbol's bare name, path/line ordered, the definition span(s) excluded. |
 | `uses_truncated` | `bool` | True when `uses_limit` shortened the list or the token cap withheld `uses_brief`. |
 | `uses_tokens` | `int` | Estimated tokens the compact `uses` block cost out of `token_budget`. |
 | `picked_by` | `str` | Which context key ranked the definitions when `near_paths` / `pr_number` was given — same_file \| same_dir \| co_change \| path_distance \| none. "" and off the wire when no context was given. |
-| `resolved_by` | `str` | `anonymous_namespace` \| `tail` \| `python_module` \| `registration` \| `file_symbol` when a read-side name form bound; "" and off the wire for an exact hit. |
+| `resolved_by` | `str` | Which name form bound, or `file_clues` when edit context located the target from literal text. |
 | `documented_in` | `list[dict[str, Any]]` | The document sections that cite the definition (the Markdown lane's `reads` edges) — section qualified name, path, line; at most five distinct sections, first by confidence. |
 | `neighbours` | `list[dict[str, Any]]` | The neighbours graph block on the definitions (one entry per definition anchor); empty unless `neighbours` ran. |
 | `anchors` | `int` | How many definitions the `neighbours` block was built for; 0 when it is off. |
@@ -1647,18 +1648,18 @@ Find an exact definition by name or path:line.
 
 | Output field | Type | Meaning |
 | --- | --- | --- |
-| `definitions` | `list[CodeUnit]` | The resolved definitions (at most 10), fitted to `token_budget`; empty when nothing resolved (see `candidates`) or on a presence answer. |
+| `definitions` | `list[CodeUnit]` | Up to 10 name matches, or the members matched by file clues, fitted to `token_budget`. |
 | `lessons_left_out` | `int` | Whole linked lessons omitted to preserve definitions within an explicit request budget. |
 | `ambiguous` | `bool` | True when the served definitions carry more than one distinct name/signature pair. |
 | `hierarchy` | `dict[str, list[dict[str, Any]]]` | For a class / interface / enum definition, its type hierarchy from the `inherits` edges of both tiers, folded by qualified name: {"supertypes": [...], "subtypes": [...]} of {symbol, kind, via (extends \| implements), tier, confidence, path… |
-| `candidates` | `list[dict[str, Any]]` | When nothing resolved: cheap fuzzy candidates (names + paths only). |
+| `candidates` | `list[dict[str, Any]]` | Source pointers when nothing resolved, or other hits outside a file-clue target. |
 | `tokens_returned` | `int` | Estimated tokens of the answer: definitions, uses, cited documents, neighbours and hierarchy blocks together. |
 | `trace_run_id` | `str` | Id of this call's trace row; pass it to `code.outcome`. |
 | `uses` | `list[dict[str, Any]] \| dict[str, Any]` | uses=true: {path, line, text, scope, scope_start_line, scope_end_line, kind} per line mentioning the symbol's bare name, path/line ordered, the definition span(s) excluded. |
 | `uses_truncated` | `bool` | True when `uses_limit` shortened the list or the token cap withheld `uses_brief`. |
 | `uses_tokens` | `int` | Estimated tokens the compact `uses` block cost out of `token_budget`. |
 | `picked_by` | `str` | Which context key ranked the definitions when `near_paths` / `pr_number` was given — same_file \| same_dir \| co_change \| path_distance \| none. "" and off the wire when no context was given. |
-| `resolved_by` | `str` | `anonymous_namespace` \| `tail` \| `python_module` \| `registration` \| `file_symbol` when a read-side name form bound; "" and off the wire for an exact hit. |
+| `resolved_by` | `str` | Which name form bound, or `file_clues` when edit context located the target from literal text. |
 | `documented_in` | `list[dict[str, Any]]` | The document sections that cite the definition (the Markdown lane's `reads` edges) — section qualified name, path, line; at most five distinct sections, first by confidence. |
 | `neighbours` | `list[dict[str, Any]]` | The neighbours graph block on the definitions (one entry per definition anchor); empty unless `neighbours` ran. |
 | `anchors` | `int` | How many definitions the `neighbours` block was built for; 0 when it is off. |
