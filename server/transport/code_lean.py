@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from server.code.domain.symbol_documentation import description_repeats_body
+
 # Accounting counters and ranking internals no agent acts on.
 _DROP_KEYS: frozenset[str] = frozenset(
     {
@@ -296,10 +298,9 @@ def _lean_symbol(out: dict[str, Any]) -> None:
         body = d.get("body")
         if description == _NO_DOC or (
             isinstance(description, str)
-            and bool(description.strip())
             and isinstance(body, str)
-            and description.strip() in body
             and not (d.get("elided") or d.get("granularity") == "skeleton")
+            and description_repeats_body(description, body, scip=d.get("tier") == "scip")
         ):
             d.pop("description")
 
