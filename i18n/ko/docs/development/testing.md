@@ -173,7 +173,7 @@ python scripts/gates/mypy_gate.py --update
 
 `.github/workflows/scorecard.yml`은 `main`에 대한 푸시, 매주, 그리고 요청 시 OpenSSF Scorecard 검사를 실행합니다. README 배지에 표시되는 점수를 게시하고 결과를 코드 스캐닝에 추가하며, 풀 리퀘스트에서는 실행되지 않고 머지를 막지 않습니다.
 
-`.github/workflows/docs-site.yml`은 `docs/`, `mkdocs.yml`, `llms.txt`, `llms-install.md`, `scripts/docs_site/`, `scripts/codegen/page_summary.py` 또는 워크플로 자체를 건드리는 `main`으로의 풀 리퀘스트와 `main`에 대한 모든 푸시에서 `mkdocs build --strict`로 문서 사이트를 빌드하므로, 깨진 링크나 앵커는 `docs site / build` 체크를 실패시킵니다. 저장소 변수 `DOCS_SITE_ENABLED`가 `true`인 동안에만 `main`에서 사이트를 GitHub Pages에 게시합니다.
+`npm --prefix docs run build`는 `docs/` 패키지에서 문서 사이트를 빌드합니다. 배포 설정은 결과를 `https://loom.clickhouse.com/docs/`에 게시합니다.
 
 다른 브랜치 위에 쌓인 풀 리퀘스트는 `main` 또는 `release/X.Y` 라인으로 대상을 변경하기 전까지 체크가 실행되지 않으며, 머지 충돌이 있는 풀 리퀘스트도 마찬가지입니다. 푸시 후 "no checks reported"가 보인다면 대개 둘 중 하나가 원인입니다.
 
