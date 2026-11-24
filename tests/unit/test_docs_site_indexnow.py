@@ -164,14 +164,11 @@ def test_a_change_to_the_build_submits_every_page() -> None:
     every = indexnow.every_page()
     assert SITE in every and SITE + "use-cases/" in every
     for path in (
-        "mkdocs.yml",
-        "scripts/docs_site/overrides/main.html",
-        "scripts/docs_site/locales.py",
-        "scripts/docs_site/video_labels.py",
-        "scripts/docs_site/paths.py",
-        "scripts/docs_site/hooks.py",
-        "scripts/docs_site/requirements.txt",
-        "scripts/codegen/page_summary.py",
+        "docs/blume.config.ts",
+        "docs/lib/documentation-routes.mjs",
+        "docs/lib/site-identity.mjs",
+        "docs/scripts/prepare-content.mjs",
+        "docs/theme.css",
     ):
         assert indexnow.urls_for({path: "M"}) == every
     # Changing the submitter itself, or a file that only looks like a build input, renders
@@ -226,7 +223,7 @@ def test_main_posts_only_the_changed_pages_and_posts_nothing_when_none_changed(
 
 
 def test_shared_language_route_mapping_is_a_render_input() -> None:
-    from scripts.docs_site import locales
+    from scripts.i18n import site
 
-    helper = Path(locales.page_path.__code__.co_filename).resolve().relative_to(ROOT)
+    helper = Path(site.page_path.__code__.co_filename).resolve().relative_to(ROOT)
     assert indexnow.urls_for({helper.as_posix(): "M"}) == indexnow.every_page()
