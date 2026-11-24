@@ -9,9 +9,6 @@ on:
       - "README.md"
       - "docs/**"
       - "scripts/i18n/**"
-      - "scripts/docs_site/messages.py"
-      - "scripts/docs_site/indexnow.py"
-      - "scripts/docs_site/paths.py"
       - ".github/workflows/i18n.yml"
   workflow_run:
     workflows: [ci]

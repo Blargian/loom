@@ -165,7 +165,7 @@ python scripts/gates/mypy_gate.py --update
 
 `.github/workflows/scorecard.yml` は、`main` へのプッシュ、毎週、および手動で OpenSSF Scorecard のチェックを実行します。README のバッジに表示されるスコアを公開し、検出結果をコードスキャンに追加します。プルリクエストでは実行されず、マージもブロックしません。
 
-`npm --prefix docs run build` は `docs/` パッケージからドキュメントサイトをビルドします。デプロイ設定は結果を `https://loom.clickhouse.com/docs/` で公開します。
+`.github/workflows/docs-site.yml` は、`docs/`、`mkdocs.yml`、`llms.txt`、`llms-install.md`、`scripts/docs_site/`、`scripts/codegen/page_summary.py`、またはこのワークフロー自体に触れる `main` へのプルリクエストと、`main` へのすべてのプッシュで `mkdocs build --strict` によりドキュメントサイトをビルドします。そのため、壊れたリンクやアンカーは `docs site / build` チェックで失敗します。リポジトリ変数 `DOCS_SITE_ENABLED` が `true` の間だけ、`main` から GitHub Pages にサイトを公開します。
 
 別のブランチに積み重ねたプルリクエストは、`main` または `release/X.Y` ラインに付け替えるまでチェックが実行されません。マージコンフリクトのあるプルリクエストも同様です。プッシュ後に「no checks reported」と表示されたら、たいていはこのどちらかが原因です。
 
