@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -352,6 +352,7 @@ async function prepareContent() {
     });
     if (prepared !== text) writeFileSync(file, prepared);
   }
+  promoteComponentPages();
 
   const packagePath = fileURLToPath(import.meta.resolve("blume/package.json"));
   const codemod = join(dirname(packagePath), "skills", "blume-migrate", "scripts", "mkdocs-codemod.mjs");
@@ -361,7 +362,9 @@ async function prepareContent() {
   });
 
   if (result.status !== 0) process.exit(result.status ?? 1);
-  if (!existsSync(join(content, "index.md"))) process.exit("Blume content preparation produced no index page.");
+  if (!existsSync(join(content, "index.md")) && !existsSync(join(content, "index.mdx"))) {
+    process.exit("Blume content preparation produced no index page.");
+  }
 
   for (const file of contentFiles(content)) {
     let text = readFileSync(file, "utf8")
@@ -480,6 +483,36 @@ export function prepareTranslatedMarkup(text, englishSources) {
     cursor = end;
   }
   return written + text.slice(cursor);
+}
+
+/** Blume content components are available in MDX pages, not Markdown pages. */
+function promoteComponentPages() {
+  for (const file of contentFiles(content)) {
+    if (!file.endsWith(".md")) continue;
+    const text = readFileSync(file, "utf8");
+    if (!/<\/?(?:Steps|Step)(?:\s|>)/.test(text)) continue;
+    writeFileSync(file, escapeMdxPlaceholders(text));
+    renameSync(file, `${file.slice(0, -3)}.mdx`);
+  }
+}
+
+/** Escape Markdown placeholders that MDX would otherwise parse as JSX tags. */
+function escapeMdxPlaceholders(text) {
+  let fenced = false;
+  return text
+    .split("\n")
+    .map((line) => {
+      if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+      if (fenced) return line;
+      return line
+        .split(/(`[^`]*`)/)
+        .map((part, index) => {
+          if (index % 2) return part;
+          return part.replace(/<(?!\/?(?:Steps|Step)(?:\s|>))([A-Za-z][A-Za-z0-9_-]*)>/g, "&lt;$1&gt;");
+        })
+        .join("");
+    })
+    .join("\n");
 }
 
 /** Move a generated translation's title into front matter for Blume to render once. */

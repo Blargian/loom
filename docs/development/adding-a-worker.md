@@ -12,7 +12,9 @@ flowchart LR
     V --> W["loom.worker_status<br/>/v1/admin/workers.status"]
 ```
 
-## 1. Write the pass
+<Steps>
+
+<Step title="Write the pass">
 
 Create `server/<domain>/workers/<name>.py` with an `async def run_pass()`. The supervisor calls it once per interval and discards the return value. A small example is `server/tasks/workers/lease_sweep.py`:
 
@@ -45,7 +47,9 @@ The pass contract:
 - **Cursor.** A paging worker reads `pass_context.resume_cursor()` and calls `pass_context.set_cursor(value)` where it stopped. The cursor is stored on the pass's `loom.worker_status` row, so a restarted process resumes.
 - **A broad `except` says why:** `# noqa: BLE001 — <what must not fail>`.
 
-## 2. Attribute its queries
+</Step>
+
+<Step title="Attribute its queries">
 
 The supervisor tags every pass:
 
@@ -62,7 +66,9 @@ from server.core.ch import set_query_tag
 set_query_tag("worker.my_loop")
 ```
 
-## 3. Add its settings
+</Step>
+
+<Step title="Add its settings">
 
 Add the switch and the cadence to the area's section of `server/settings/catalog.py` (`Memory`, `Code`, `Tracker`, …). Each comment becomes the row's text in the generated [configuration reference](../reference/configuration.md).
 
@@ -78,7 +84,9 @@ Add the switch and the cadence to the area's section of `server/settings/catalog
 
 Default a worker **off** when it needs credentials, spends on a provider, or serves a plane an operator opts into. Default-on workers run on every stack, including a laptop.
 
-## 4. Add the registry row
+</Step>
+
+<Step title="Add the registry row">
 
 ```python
 (
@@ -118,7 +126,9 @@ def due_scope() -> list[tuple[str, str]]: ...  # the (org, namespace) pairs this
 
 That is `server/tracker/workers/embed.py`'s declaration. The check is one statement per table, bounded by `FIRST_PASS_DUE_TIMEOUT_SECONDS`. An unreadable table reads as due.
 
-## 5. Understand where it runs
+</Step>
+
+<Step title="Understand where it runs">
 
 **One supervisor per deployment.** `server/workers/leader.py` elects one process across every container and host through ClickHouse: the `workers_supervisor` key in the Keeper lock table `loom._migration_lock`. The holder renews every `LOOM_SUPERVISOR_LEASE_TTL_S / 6`; a holder that loses the lease stops its workers; when the holder dies, another process takes over after `LOOM_SUPERVISOR_LEASE_TTL_S` (default 30 s).
 
@@ -136,7 +146,9 @@ Run every replica in `auto`: any of them may become the leader. A `make server` 
 
 **Rolling upgrades.** An older build leaves the lease to a live newer build (see [Failure and recovery](../architecture/failure-and-recovery.md#background-workers)). The old leader releases the lease when it stops, and a newer process takes it on its next round, within seconds.
 
-## 6. Pin it in tests
+</Step>
+
+<Step title="Pin it in tests">
 
 - **Registry snapshot.** `tests/unit/test_worker_registry_snapshot.py` builds the worker list under three settings profiles (`defaults`, `all_on`, `production`) and compares every `WorkerSpec` field with `tests/unit/snapshots/worker_registry.json`. Regenerate it for an intended change only:
 
@@ -151,11 +163,17 @@ Run every replica in `auto`: any of them may become the leader. A `make server` 
 - **Generated docs.** `python scripts/codegen/docs_reference.py` regenerates the
   [workers reference](../reference/workers.md); `make lint` fails while it is stale.
 
-## 7. Check it runs
+</Step>
+
+<Step title="Check it runs">
 
 - `/v1/admin/workers.status` merges this process's registry with the latest `loom.worker_status` row per worker, so the web tier shows workers running in the workers container.
 - `/v1/health?include=workers` reports per-worker status and `workers_leader`: whether the answering process holds the lock, and why.
 - Alert on `loom.worker.consecutive_failures{worker}` and `loom.worker.partial_failures{worker}` ([monitoring](../operations/monitoring.md)).
+
+</Step>
+
+</Steps>
 
 ## Related
 

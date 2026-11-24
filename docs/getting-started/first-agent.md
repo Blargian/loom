@@ -8,13 +8,15 @@ seo:
 
 This tutorial builds a small agent with the Python SDK. It continues from the
 [quickstart](./quickstart.md): the stack runs on `http://localhost:7777` and the Python
-SDK is installed ([quickstart step 5](./quickstart.md#5-first-memory-from-python)). Every
+SDK is installed ([quickstart step 5](./quickstart.md)). Every
 step runs on the stock stack. Meaningful extraction and grounded `memory.ask` answers
 need a configured real LLM; ranking is meaningful on the released stack's local embedder,
 not on a checkout's fake one
 ([providers](../operations/deployment.md#providers)).
 
-## 1. Give the agent an identity
+<Steps>
+
+<Step title="Give the agent an identity">
 
 Every row Loom stores carries the identity tuple `(org, namespace, agent, user_id,
 session_id)`. The `Agent` binds the first three; `user_id` and `session_id` travel per
@@ -55,7 +57,9 @@ facts, and one namespace shared by several agents must still say who wrote what.
 [identities and namespaces](../concepts/identities-and-namespaces.md) page explains the
 model.
 
-## 2. Store facts and handle abstain
+</Step>
+
+<Step title="Store facts and handle abstain">
 
 ```python
 async def remember_and_recall(a: Agent) -> None:
@@ -102,7 +106,9 @@ does the user prefer?", user_id=USER)` returns `answer`, `abstain` and the `memo
 it cited. Grounded answers need a configured real LLM; the fake one can return
 deterministic output for development and tests.
 
-## 3. Hold a conversation as a session
+</Step>
+
+<Step title="Hold a conversation as a session">
 
 A `Session` is what an agent loop keeps between turns and across restarts. It binds one
 `(user_id, session_id)` scope and four verbs to it:
@@ -138,7 +144,9 @@ SDK logs a warning) and extraction still runs.
 [Conversations and sessions](../features/conversations-and-sessions.md) covers threads,
 digests and session briefs.
 
-## 4. Load context at session start
+</Step>
+
+<Step title="Load context at session start">
 
 Outside a session, one call assembles the bounded block an agent wants before its first
 turn: working memory first, then the profile, relevant memories, matching procedures and
@@ -159,7 +167,9 @@ instead of failing the pack. Working memory is scratchpad state, not retrieval m
 is loaded first and never embedded or ranked
 ([Working memory and profiles](../features/memory/working-memory-and-profiles.md)).
 
-## 5. Record a task as a run
+</Step>
+
+<Step title="Record a task as a run">
 
 A run is one agent execution: what it was asked, what it relied on and how it ended.
 Naming the memories a run relied on is the feedback loop: those keys are credited in
@@ -199,7 +209,9 @@ The same two calls are available directly as `a.run.begin(goal=...)` and
 stored as a `reflection` memory. `a.run.get(run_id)` replays a run with what it wrote,
 recalled and cost. [Runs](../features/runs.md) covers reflections, retention and grades.
 
-## 6. Put it together
+</Step>
+
+<Step title="Put it together">
 
 ```python
 async def main() -> None:
@@ -217,6 +229,10 @@ Run it, then open `http://localhost:7777/memories` to see the rows with their wr
 agent, `/runs` for the run, and `/conversations` for the thread. Blocking code uses
 `loom.SyncAgent`, which takes the same arguments and exposes every method as a blocking
 call.
+
+</Step>
+
+</Steps>
 
 ## The same agent in TypeScript
 
@@ -270,12 +286,18 @@ await bot.call(
 `memory.ask`. The [TypeScript SDK reference](../reference/typescript-sdk.md) covers the
 full surface.
 
-## 7. Connect a coding agent
+<Steps>
+
+<Step title="Connect a coding agent">
 
 A coding agent reads the same namespace through MCP tools. What you stored from Python
 is visible to it when its token reads that namespace.
 [Connect a coding agent](./connect-a-coding-agent.md) covers the plugins and
 `loom install`.
+
+</Step>
+
+</Steps>
 
 ## Next
 

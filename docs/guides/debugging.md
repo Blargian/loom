@@ -16,7 +16,9 @@ flowchart TD
     G["memory.search explain=true<br/>per-component scores"] -.-> B
 ```
 
-## 1. Capture the request's ids
+<Steps>
+
+<Step title="Capture the request's ids">
 
 Every HTTP response carries:
 
@@ -38,7 +40,9 @@ curl -si "$LOOM_BASE_URL/v1/memory.search" -H "Authorization: Bearer $LOOM_API_K
 points at the query. A large `app` with a small `ch` points at a provider call
 (embedding, rerank, LLM).
 
-## 2. Join the request across systems
+</Step>
+
+<Step title="Join the request across systems">
 
 The same id is in `loom.agent_events.request_id`, the Langfuse trace metadata, and the
 span attribute `loom.request_id` in `default.otel_traces`.
@@ -70,7 +74,9 @@ Spans go to `default.otel_traces` (in `LOOM_CLICKSTACK_DATABASE` when it is set)
 > free-text argument with a `sha256:<16 hex>/<length>` shape. To see what was asked, use
 > the search trace log below or your own client log.
 
-## 3. Explain a search answer
+</Step>
+
+<Step title="Explain a search answer">
 
 **Why did this rank here?** `memory.search` with `explain=true` attaches `score_components`
 to each served hit: the ranking signals and, after a reranker, its move (`rerank_from`,
@@ -115,6 +121,10 @@ alone (no fusion, assembly or reranker), returning, per hit, `similarity`, `dist
 per search: `returned_keys`, `returned_scores`, `abstain`, `retrieval_risk`,
 `latency_ms`, and the `query` when `LOOM_LANGFUSE_CAPTURE_IO_LEVEL` is not `off` (its
 default is `off`, so by default the rows carry keys and scores without the question).
+
+</Step>
+
+</Steps>
 
 ## Diagnose coding-agent overhead
 
@@ -175,7 +185,9 @@ failed solutions, and keep setup and judging costs separate from coding costs.
 Record whether source and lessons were present before attributing a bad patch to
 retrieval. Successful delivery does not establish relevance or correct use.
 
-## 4. Explain a write
+<Steps>
+
+<Step title="Explain a write">
 
 - **The write's own answer.** `memory.set` returns `status`, `conflict_verdict`, `peers`,
   `duplicate_of`, `merged_into_key`, `noop` and `advisories`. A write that "disappeared"
@@ -194,6 +206,10 @@ retrieval. Successful delivery does not establish relevance or correct use.
   leaves a hash-only row ([audit](../features/observability/audit.md)).
 - **A run's view.** `run.get(run_id)` returns what a run recalled (`recalled_keys`), what
   it wrote, its turns and its cost ([trace and resume](trace-and-resume.md)).
+
+</Step>
+
+</Steps>
 
 ## Related
 

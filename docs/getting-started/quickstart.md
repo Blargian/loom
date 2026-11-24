@@ -14,7 +14,9 @@ Run Loom locally with Docker. The default install listens only on localhost and 
 Use Docker Desktop or Docker Engine with Compose 2.20 or later. Leave port `7777` free
 for Loom. On Windows, run the installer in a WSL 2 terminal where `docker` works.
 
-## 1. Boot the stack
+<Steps>
+
+<Step title="Boot the stack">
 
 ### Fast path: released image, no clone
 
@@ -210,8 +212,8 @@ to localhost. Before sharing it with a team, configure [operator access](../oper
 and [TLS](../operations/deployment.md#proxy-and-tls). Configure [real models and API keys](./models-and-keys.md)
 as well; selecting multi-user mode does not replace the fake LLM.
 
-For an already running single-user stack, follow the [switching instructions](#2-open-the-dashboard)
-instead; container recreation preserves the existing data volumes.
+For an already running single-user stack, follow the switching instructions below instead;
+container recreation preserves the existing data volumes.
 
 ### Contributor path: build a checkout
 
@@ -319,7 +321,9 @@ docker compose --project-directory "$HOME/.loom" exec loom loom doctor
 - `loom doctor` prints one line per server-side check. `--json` gives JSON. From a source
   checkout stack, run `docker compose --env-file .env -f compose.yaml -f dev/docker-compose.dev.yml exec loom loom doctor`.
 
-## 2. Open the dashboard
+</Step>
+
+<Step title="Open the dashboard">
 
 `http://localhost:7777/` opens straight into the dashboard in `single-user` mode;
 in multi-user mode, sign up or sign in first. In `single-user` mode
@@ -356,7 +360,9 @@ so anyone who reaches the port can then sign up. Before making the server reacha
 team, follow the [deployment guide](../operations/deployment.md#identity-modes) for
 operator access and [TLS](../operations/deployment.md#proxy-and-tls).
 
-## 3. Get a token
+</Step>
+
+<Step title="Get a token">
 
 In single-user mode a token is optional. Minting one anyway keeps your scripts working
 when auth is turned on, as long as they name their `org` (or send it blank), `namespace`
@@ -396,7 +402,9 @@ export LOOM_API_KEY="<token>"
 
 Claims, roles and grants are in [Tokens and grants](../guides/tokens-and-grants.md).
 
-## 4. First memory over HTTP
+</Step>
+
+<Step title="First memory over HTTP">
 
 Every operation is a `POST /v1/<op>` with a JSON body. A fresh install with the stock
 `.env`, from the installer or a checkout, is single-user: no token, and an everyday memory
@@ -428,7 +436,9 @@ agent's memories in the namespace, including those added in the dashboard; name 
 `GET /v1/operations` lists every operation, and <http://localhost:7777/docs> lets you try
 each one from the browser. Shapes are in the [HTTP API reference](../reference/http-api.md).
 
-## 5. First memory from Python
+</Step>
+
+<Step title="First memory from Python">
 
 ```bash
 pip install clickhouse-loom    # or, from a clone: pip install ./sdk/python
@@ -484,7 +494,9 @@ The client surfaces are in the [Python SDK](../reference/python-sdk.md) and
 [TypeScript SDK](../reference/typescript-sdk.md) references, and the
 [Rust SDK usage](https://github.com/ClickHouse/loom/blob/main/sdk/rust/README.md#use).
 
-## 6. First memory from a coding agent
+</Step>
+
+<Step title="First memory from a coding agent">
 
 If the installer connected your agent, skip to the last paragraph of this section.
 
@@ -532,7 +544,9 @@ Start a new session and say _"Remember that I never deploy on Friday."_ The agen
 `loom_search` and answers from the stored fact. The model decides when to save and
 search from the tool descriptions; there are no trigger words.
 
-## 7. See it in the dashboard
+</Step>
+
+<Step title="See it in the dashboard">
 
 | Page              | Shows                                             |
 | ----------------- | ------------------------------------------------- |
@@ -541,6 +555,10 @@ search from the tool descriptions; there are no trigger words.
 | `/admin/usage`    | Cost per operation and agent.                     |
 
 The rest is in [Dashboard](../features/dashboard.md).
+
+</Step>
+
+</Steps>
 
 ## Optional: index a repository on the released stack
 
@@ -620,7 +638,7 @@ the answer and the chunks it cited. With the fake LLM it prints the top
 | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `set_from_messages` writes no facts                                           | An empty result can be valid when the text contains nothing memorable. Check the provider configuration in [Models and keys](./models-and-keys.md); meaningful extraction needs a real LLM.                                                                                  |
 | Search results look arbitrary                                                 | The embedder is a fake one (`fake-ngram-*` in `.env`). Switch it as [Models and keys](./models-and-keys.md) says, which re-embeds what is stored. Do not delete your volumes to change models.                                                                               |
-| 401 `AUTH_INVALID` after turning auth on                                      | No token, or one signed with another `LOOM_JWT_SECRET`. Re-mint with the Compose command in [Get a token](#3-get-a-token).                                                                                                                                                   |
+| 401 `AUTH_INVALID` after turning auth on                                      | No token, or one signed with another `LOOM_JWT_SECRET`. Re-mint with the Compose command in the token step above.                                                                                                                                                            |
 | The dashboard returns 503                                                     | The server runs from source (`make server`) without a built frontend. Run `make frontend-build`.                                                                                                                                                                             |
 | Released stack does not become healthy                                        | Run `docker compose --project-directory "$HOME/.loom" logs --tail 100 loom clickhouse`. See [Troubleshooting](../operations/troubleshooting.md).                                                                                                                             |
 | Adding a repository answers `SANDBOX_UNAVAILABLE`                             | The stack runs without the repository-job sandbox. Index the repository through `LOOM_CODE_REPOS_JSON` ([Index a repository](#optional-index-a-repository-on-the-released-stack)).                                                                                           |

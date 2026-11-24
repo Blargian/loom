@@ -43,14 +43,16 @@ Pre-registering the gates prevents a convenient metric or slice from becoming th
 after the run. Keep failures and abstentions visible; report request errors separately
 instead of silently counting or discarding them as retrieval misses.
 
-## 1. Product smoke test
+<Steps>
+
+<Step title="Product smoke test">
 
 This takes about 15 minutes and proves wiring, persistence and visibility—not semantic
 quality.
 
-1. [Boot the local stack](quickstart.md#1-boot-the-stack) and confirm `/v1/health` reports
+1. [Boot the local stack](quickstart.md) and confirm `/v1/health` reports
    `status: ok`.
-2. [Write and search a fact](quickstart.md#4-first-memory-over-http).
+2. [Write and search a fact](quickstart.md).
 3. [Connect a coding agent](connect-a-coding-agent.md), tell it a durable preference, open
    a fresh session and ask for that preference.
 4. Correct the fact, then confirm the dashboard shows its source and version history.
@@ -62,7 +64,9 @@ answer, an unrelated question abstains, and the dashboard shows the writer and h
 The result says nothing about production recall while health reports `fake_embedding` or
 `fake_llm`.
 
-## 2. Evaluate your workload
+</Step>
+
+<Step title="Evaluate your workload">
 
 Configure [real providers](../operations/deployment.md#providers), reset or re-embed data
 if the vector width changed, and record the resolved models from `/v1/health`. Use an
@@ -233,7 +237,9 @@ it defers MCP tool definitions.
   slice to a general claim.
 - Save per-question outputs, including errors and misses—not only aggregate scores.
 
-## 3. Audit or reproduce published results
+</Step>
+
+<Step title="Audit or reproduce published results">
 
 The README is a scorecard, not the evidence ledger. For every published number:
 
@@ -248,6 +254,10 @@ Third-party datasets are not all redistributed by this repository. Their source 
 license are listed under [datasets](../benchmarks/running.md#datasets). Full public runs
 can take hours and incur provider charges; start with the documented smoke slice, then run
 the complete protocol before publishing a comparison.
+
+</Step>
+
+</Steps>
 
 ## What to publish
 

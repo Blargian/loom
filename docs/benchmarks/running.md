@@ -12,7 +12,9 @@ virtualenv on the path, the harness silently runs that checkout's code. The `mak
 targets set `PYTHONPATH` this way (`BENCH_PYTHON` in the `Makefile`), and the commands
 below assume it is exported. `python bench/<name>.py --help` lists a harness's flags.
 
-## 1. Prepare a server with real providers
+<Steps>
+
+<Step title="Prepare a server with real providers">
 
 A bench on fake providers measures nothing
 ([why](./methodology.md#fake-providers-make-scores-meaningless)). The stock `.env` pins
@@ -41,7 +43,9 @@ a shared one: its queue depth is part of what they measure. No harness records h
 For latency numbers, write down the host, the ClickHouse deployment (OSS single node or
 Cloud) and `build_commit` yourself.
 
-## 2. Mint a token that outlives the run
+</Step>
+
+<Step title="Mint a token that outlives the run">
 
 A token that expires mid-run turns later calls into errors, which show up as 429s on the
 shared limiter rather than a clear failure. Long runs take hours, so mint with days of
@@ -68,7 +72,9 @@ Judged benches also need `OPENAI_API_KEY` in the bench process for the pinned re
 judge. `OPENAI_BASE_URL` points them at a compatible gateway; `BENCH_READER_MODEL` /
 `BENCH_JUDGE_MODEL` override them and mark the run non-comparable.
 
-## 3. Run a target
+</Step>
+
+<Step title="Run a target">
 
 ### Offline (no server, no spend)
 
@@ -187,6 +193,10 @@ and assigned traffic class; exit 0 means at least one call succeeded.
 Every other harness is `python bench/<name>.py --base-url … --token …` plus its dataset
 flag. [`bench/README.md`](../../bench/README.md) lists them by area with a "when to run
 what" table.
+
+</Step>
+
+</Steps>
 
 ## Datasets
 
