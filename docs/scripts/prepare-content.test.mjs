@@ -1,7 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { load } from "js-yaml";
 
+import { withContentDate } from "./content-dates.mjs";
 import { normalizeTranslatedTitle, rewritePublishedDocLinks, rewriteSourceLinks } from "./prepare-content.mjs";
+
+test("adds the source date without changing page content or overriding an explicit date", () => {
+  const date = "2025-01-02T03:04:05.000Z";
+  const body = "# Page\n\nContent.\n";
+  for (const header of ["title: Page", "{title: Page}"]) {
+    const prepared = withContentDate(`---\n${header}\n---\n${body}`, date);
+    const [, yaml, content] = prepared.split(/^---\n/m);
+    assert.deepEqual(load(yaml), { title: "Page", lastModified: date });
+    assert.equal(content, body);
+  }
+  assert.deepEqual(load(withContentDate(body, date).split(/^---\n/m)[1]), { lastModified: date });
+  for (const key of ["lastModified", '"lastModified"', "'lastModified'"]) {
+    const pinned = `---\n${key}: "2025-01-03"\n---\n${body}`;
+    assert.equal(withContentDate(pinned, date), pinned);
+  }
+  assert.equal(withContentDate(body, undefined), body);
+});
 
 test("moves a generated translation title into Blume front matter", () => {
   const prepared = normalizeTranslatedTitle(
