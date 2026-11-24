@@ -34,9 +34,7 @@ Two commands do the work:
 `version`. A re-import supersedes under `ReplacingMergeTree(version)` and the row count stays
 the same.
 
-<Steps>
-
-<Step title="Dry-run">
+## 1. Dry-run
 
 No writes. The dry run checks that every timestamp parses, prints the kind → type and TTL
 crosstab and the category count, and probes the embedder so rows do not land unembedded.
@@ -49,9 +47,7 @@ loom import-clickgap \
 
 Confirm the crosstab matches the source and that the embedder is reachable.
 
-</Step>
-
-<Step title="Import">
+## 2. Import
 
 Use a **dedicated namespace** (`clickgap`) so rollback is a single `namespace.delete`. The
 export carries no vectors, so every row is embedded on import with the live
@@ -78,10 +74,6 @@ analytics.
 > **Warning:** `--seed-recall-events` is additive and not idempotent: run it once, into a
 > fresh namespace. It **drops `pr_number`**, because Loom usage events have no PR column.
 
-</Step>
-
-</Steps>
-
 ## Recall signal
 
 The importer mirrors `recall_count` onto `memory_embeddings.reinforcement_count` and
@@ -97,9 +89,7 @@ reinforcement terms ([retrieval and ranking](../concepts/retrieval-and-ranking.m
 workload depends on recall-frequency ordering, validate that the resulting order is
 acceptable (the validator reports recall-order τ) before cutover.
 
-<Steps>
-
-<Step title="Validate before cutover">
+## 3. Validate before cutover
 
 The validator mints its own admin token with `server.auth.jwt.mint_token`, so it needs
 `LOOM_JWT_SECRET` and an explicit `LOOM_BASE_URL`: there is no default target. Its probes
@@ -135,10 +125,6 @@ fails `--min-tau`.
 Summaries (`summary → episodic`) are excluded from probes, since they are non-searchable by
 design. `--seed` (default 42) makes the probe sample reproducible; `--concurrency`
 (default 8) bounds concurrent searches.
-
-</Step>
-
-</Steps>
 
 ## Use suppression memories
 

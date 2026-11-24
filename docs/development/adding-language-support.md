@@ -31,9 +31,7 @@ Languages `lang_for_path` does not name are detected in `lang_detect.py`, so add
 
 Every module under `server/code/domain/extract/` is either in a stage of `STAGE_MODULES` or named, with a reason, in `NON_EXTRACTOR_MODULES` in `tests/unit/test_code_extractor_stamp.py`. Put a new lane module in `NON_EXTRACTOR_MODULES`, or that test fails.
 
-<Steps>
-
-<Step title="Choose the lane's shape">
+## 1. Choose the lane's shape
 
 | Shape             | Examples                                                                                                                                                       | You provide                                                                                                                                                                 |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -45,9 +43,7 @@ Every module under `server/code/domain/extract/` is either in a stage of `STAGE_
 
 A grammar lane's grammar is **not** in `STAMPED_GRAMMARS`, so upgrading it moves no stamp. The lane owns re-deriving its rows.
 
-</Step>
-
-<Step title="Write the parser">
+## 2. Write the parser
 
 `parse_<lang>(path: str, source: bytes) -> ParsedFile` returns the language tag, the symbols (`treesitter.Symbol`: qualified name, kind, span, signature), the includes and what the edge stage needs. Follow the nearest existing lane:
 
@@ -75,9 +71,7 @@ _PARSERS = {
 
 and add the extension to `LANG_BY_EXTENSION` (`".rs": "rust"`). The wrapper imports the lane lazily, so an optional grammar stays optional. A new tree-sitter grammar also goes in `bounded_parse._LOADERS`, which every parse runs through first.
 
-</Step>
-
-<Step title="Test the lane">
+## 3. Test the lane
 
 - **A lane test**, `tests/unit/test_code_lang_<lang>.py`, parses small inline sources and asserts names, kinds, spans, includes and edges. Skip when the grammar is absent: `pytest.importorskip("tree_sitter_rust")`. `test_code_lang_rust.py` and `test_code_lang_typescript.py` are the models.
 - **The lanes corpus.** Add fixtures under `tests/fixtures/code_lanes/<lang>/`: synthetic, or open-source excerpts under their own licence, listed in `tests/fixtures/code_lanes/NOTICE.md`. `tests/unit/test_code_lanes_corpus.py` derives languages, symbols, facets, includes and edges from every fixture and compares them with `tests/fixtures/code_lanes/expected.json`. Regenerate and review the diff:
@@ -94,9 +88,7 @@ and add the extension to `LANG_BY_EXTENSION` (`".rs": "rust"`). The wrapper impo
   `NON_EXTRACTOR_MODULES`.
 - **Retrieval.** For a lane that should answer `code.search` or `code.symbol` well, run the code-intelligence gate before and after. `make bench-code-intel-dry` checks the question set offline; `make bench-code-intel` runs it against a server with a real embedder, never the fake one ([running benchmarks](../benchmarks/running.md)).
 
-</Step>
-
-<Step title="Bring existing namespaces up to date">
+## 4. Bring existing namespaces up to date
 
 A lane outside the stamp changes nothing already indexed. New commits use the lane; old files keep their previous rows (often chunk-only). Re-derive them with a targeted backfill:
 
@@ -109,9 +101,7 @@ loom code backfill --org <org> --namespace <code-namespace> --paths-file rust-pa
 
 > **Warning:** if a change must touch a stamped module (a `chunker.py` fix, a `treesitter.py` extension), say so in the PR. Every deployment that takes it re-derives the moved stages for every file of the affected families in every namespace. A `chunker.py` change moves only `chunk`; an `edges_treesitter.py` change moves `edge`, `chunk` and `guard`; a parser change moves every stage.
 
-</Step>
-
-<Step title="Add a compiler tier (optional)">
+## 5. Add a compiler tier (optional)
 
 A compiler tier pays off when fast-tier edges are ambiguous (overloads, dynamic dispatch, re-exports) and a SCIP indexer exists. `TIERS` in `server/code/domain/index/compiler_tiers.py` lists the tiers. Each `TierSpec` names the indexer (`scip-clang`, `scip-typescript`, `scip-go`, `scip-python`), its `code_index_state` watermark key (`scip_commit`, `scip_commit_ts`, `scip_commit_go`, `scip_commit_py`) and the workers that move it. A new tier needs:
 
@@ -130,10 +120,6 @@ A compiler tier pays off when fast-tier edges are ambiguous (overloads, dynamic 
    `code.index_status` and the dashboard report the tier.
 
 Compiler-tier rows carry `tier='scip'`. Reads merge them with the fast tier by qualified name, preferring the compiler tier. Files the indexer skips, and commits before their delta lands, still read from the fast tier.
-
-</Step>
-
-</Steps>
 
 ## Related
 

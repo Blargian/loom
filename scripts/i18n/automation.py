@@ -26,9 +26,9 @@ BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 
-def command(*args: str, input_text: str | None = None) -> str:
+def command(*args: str, input_text: str | None = None, env: dict[str, str] | None = None) -> str:
     return subprocess.run(
-        args, cwd=t.ROOT, input=input_text, check=True, capture_output=True, text=True
+        args, cwd=t.ROOT, input=input_text, check=True, capture_output=True, text=True, env=env
     ).stdout.strip()
 
 
@@ -470,7 +470,10 @@ def finalize() -> None:
     git("restore", "--source", sha, "--worktree", "--", "README.md", "i18n")
     if t.check(skip_stale=True):
         raise ValueError("translation validation failed before merge")
-    command("npm", "--prefix", "docs", "run", "build")
+    build_env = {
+        key: value for key, value in os.environ.items() if key not in {"GH_TOKEN", "GITHUB_TOKEN"}
+    }
+    command("npm", "--prefix", "docs", "run", "build", env=build_env)
     command("gh", "pr", "merge", str(pr["number"]), "--squash", "--match-head-commit", sha)
     merged = api(f"repos/{repository}/pulls/{pr['number']}")
     if not merged["merged"] or merged["head"]["sha"] != sha:

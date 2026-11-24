@@ -26,9 +26,7 @@ connections from the gateway pods, not from the actors. Each row records the tok
 subject, which tells the actors apart; the row's `agent` is the MCP client's name, which
 actors running the same client share.
 
-<Steps>
-
-<Step title="Install Loom in the cluster">
+## 1. Install Loom in the cluster
 
 Install the chart as [Kubernetes](../../operations/kubernetes.md) describes, in namespace
 `loom` with release name `loom`, which names the Service `loom`. The agents need no
@@ -51,9 +49,7 @@ networkPolicy:
           app: atenet-egress
 ```
 
-</Step>
-
-<Step title="A token per agent">
+## 2. A token per agent
 
 Give each agent its own token, with a service-account subject named for the atespace and
 the Substrate actor. Loom records that subject on each row the agent writes, and the token's
@@ -109,9 +105,7 @@ kubectl -n loom-tokens-research create secret generic research-agent \
   --from-literal=token="$TOKEN" --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-</Step>
-
-<Step title="Configure the agent and create its actor">
+## 3. Configure the agent and create its actor
 
 Substrate's documentation describes no MCP configuration for actors: configure the agent's
 MCP client in its image or as literal environment values in the actor template. The server
@@ -145,9 +139,7 @@ kubectl ate create actor-template -f template.yaml
 kubectl ate create actor research-agent --template=research-agent -a research
 ```
 
-</Step>
-
-<Step title="Allow the actor to reach Loom, with its token">
+## 4. Allow the actor to reach Loom, with its token
 
 An actor has one egress policy. This one, for the actor created above, allows HTTP to
 Loom's Service and replaces the `Authorization` header the agent sends with
@@ -196,10 +188,6 @@ With the policy in place, start the actor:
 kubectl ate resume actor research-agent -a research
 ```
 
-</Step>
-
-</Steps>
-
 ## Several agents
 
 - Agents in one Loom namespace share everything they write. A sub-agent that should read
@@ -207,7 +195,7 @@ kubectl ate resume actor research-agent -a research
   (`--namespace-role team=viewer --namespace-role research=writer`;
   [mint a token](../../guides/tokens-and-grants.md#mint-a-token)).
 - Each actor gets its own token, Secret and egress policy; an actor in another atespace gets
-  that atespace's own token namespace and grant.
+  that atespace's own token namespace and grant ([step 2](#2-a-token-per-agent)).
 - Hand work between agents with the [task inbox](../tasks-and-decisions.md#task-inbox).
 
 ## Related

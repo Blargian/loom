@@ -409,11 +409,13 @@ def test_hosted_finalizer_respects_reviews_and_merges_only_exact_successful_head
 
     monkeypatch.setattr(a, "api", api)
     calls: list[tuple[str, ...]] = []
+    build_environments: list[dict[str, str] | None] = []
     actual = a.command
 
     def command(*args: str, **kwargs: Any) -> str:
         if args[0] == "npm":
             calls.append(args)
+            build_environments.append(kwargs.get("env"))
             if site_raises:
                 raise RuntimeError("documentation build failed")
             return ""
@@ -446,6 +448,13 @@ def test_hosted_finalizer_respects_reviews_and_merges_only_exact_successful_head
         assert merge_calls[0][-2:] == ("--match-head-commit", sha)
         assert "--admin" not in merge_calls[0] and "--auto" not in merge_calls[0]
         assert calls[-1] == merge_calls[0]
+        assert build_environments == [
+            {
+                key: value
+                for key, value in os.environ.items()
+                if key not in {"GH_TOKEN", "GITHUB_TOKEN"}
+            }
+        ]
     else:
         assert merge_calls == []
         assert not any(call[1:3] == ("workflow", "run") for call in calls)

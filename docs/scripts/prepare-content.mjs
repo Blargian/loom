@@ -346,20 +346,31 @@ async function prepareContent() {
     const linked = localized ? prepareTranslatedMarkup(text, englishSources) : text;
     const rendered = localized && sourcePath === "index.md" ? prepareLocalizedLandingDemo(linked) : linked;
     const original = localized ? `i18n/${locale}/docs/${sourcePath}` : `docs/${preparedPath}`;
-    const prepared = withContentMetadata(normalizeTranslatedTitle(rendered, localizedSeo[sourcePath]?.[locale]), {
+    let prepared = withContentMetadata(normalizeTranslatedTitle(rendered, localizedSeo[sourcePath]?.[locale]), {
       date: contentDates.get(original),
       locale: localized ? locale : "en",
     });
+    prepared = staleTranslationNotice(
+      prepared,
+      sourceForTranslation(relative(content, file)),
+      englishRoute(relative(content, file)),
+    );
     if (prepared !== text) writeFileSync(file, prepared);
   }
-  promoteComponentPages();
+  promoteProcedurePages();
 
   const packagePath = fileURLToPath(import.meta.resolve("blume/package.json"));
   const codemod = join(dirname(packagePath), "skills", "blume-migrate", "scripts", "mkdocs-codemod.mjs");
-  const result = spawnSync(process.execPath, [codemod, "--write", content], {
-    cwd: dirname(root),
-    stdio: "inherit",
-  });
+  const stagedLocales = stageLocales();
+  let result;
+  try {
+    result = spawnSync(process.execPath, [codemod, "--write", content], {
+      cwd: dirname(root),
+      stdio: "inherit",
+    });
+  } finally {
+    restoreLocales(stagedLocales);
+  }
 
   if (result.status !== 0) process.exit(result.status ?? 1);
   if (!existsSync(join(content, "index.md")) && !existsSync(join(content, "index.mdx"))) {
@@ -426,6 +437,27 @@ export function prepareLocalizedLandingDemo(text) {
   });
 }
 
+/** Keep generated locale pages as inert Markdown while the English codemod runs. */
+function stageLocales() {
+  const staging = join(root, ".blume-locales");
+  rmSync(staging, { recursive: true, force: true });
+  mkdirSync(staging);
+  const staged = [];
+  for (const locale of locales) {
+    const source = join(content, locale);
+    if (!existsSync(source)) continue;
+    const destination = join(staging, locale);
+    renameSync(source, destination);
+    staged.push([source, destination]);
+  }
+  return staged;
+}
+
+function restoreLocales(staged) {
+  for (const [source, destination] of staged) renameSync(destination, source);
+  rmSync(join(root, ".blume-locales"), { recursive: true, force: true });
+}
+
 function contentFiles(directory) {
   return readdirSync(directory).flatMap((name) => {
     const path = join(directory, name);
@@ -486,14 +518,36 @@ export function prepareTranslatedMarkup(text, englishSources) {
 }
 
 /** Blume content components are available in MDX pages, not Markdown pages. */
-function promoteComponentPages() {
+function promoteProcedurePages() {
   for (const file of contentFiles(content)) {
     if (!file.endsWith(".md")) continue;
     const text = readFileSync(file, "utf8");
-    if (!/<\/?(?:Steps|Step)(?:\s|>)/.test(text)) continue;
-    writeFileSync(file, escapeMdxPlaceholders(text));
+    if (locales.includes(relative(content, file).split("/", 1)[0])) continue;
+    const prepared = procedureMdx(text);
+    if (prepared === text) continue;
+    writeFileSync(file, escapeMdxPlaceholders(prepared));
     renameSync(file, `${file.slice(0, -3)}.mdx`);
   }
+}
+
+/** Render one contiguous numbered procedure as Blume's Steps component. */
+export function procedureMdx(text) {
+  const headings = [...text.matchAll(/^## (?:(\d+)\. (.+)|.*)$/gm)];
+  const first = headings.findIndex((heading) => heading[1]);
+  if (first === -1) return text;
+
+  let last = first;
+  while (last + 1 < headings.length && headings[last + 1][1]) last += 1;
+  const procedure = headings.slice(first, last + 1);
+  const end = headings[last + 1]?.index ?? text.length;
+  let result = `${text.slice(0, procedure[0].index)}<Steps>\n\n`;
+  for (let index = 0; index < procedure.length; index += 1) {
+    const heading = procedure[index];
+    const bodyStart = heading.index + heading[0].length;
+    const bodyEnd = procedure[index + 1]?.index ?? end;
+    result += `<Step title=${JSON.stringify(heading[2])}>${text.slice(bodyStart, bodyEnd)}</Step>\n\n`;
+  }
+  return `${result}</Steps>\n\n${text.slice(end)}`;
 }
 
 /** Escape uppercase Markdown placeholders that MDX would otherwise parse as JSX tags. */
@@ -533,6 +587,38 @@ export function normalizeTranslatedTitle(text, seo = {}) {
   return `---\ntitle: ${JSON.stringify(title)}${searchMetadata}\n---\n\n${lines.join("\n")}`;
 }
 
+const STAMP = /<!-- i18n: source=(\S+) blob=([0-9a-f]{40}) model=\S+ -->/;
+
+function sourceForTranslation(from) {
+  const [locale, ...source] = from.split("/");
+  if (!locales.includes(locale)) return null;
+  const path = source.join("/");
+  const english = join(root, path);
+  return existsSync(english) ? readFileSync(english, "utf8") : null;
+}
+
+function englishRoute(from) {
+  const [locale, ...source] = from.split("/");
+  if (!locales.includes(locale)) return "";
+  return `/docs/${source.join("/").replace(/\.md$/, "/")}`;
+}
+
+function gitBlob(text) {
+  return createHash("sha1")
+    .update(`blob ${Buffer.byteLength(text)}\0`)
+    .update(text)
+    .digest("hex");
+}
+
+/** Mark published translations whose stamped English source differs from this build's source. */
+export function staleTranslationNotice(text, english, url) {
+  if (english === null) return text;
+  const stamp = text.match(STAMP);
+  if (!stamp || stamp[2] === gitBlob(english)) return text;
+  const notice = "> **Translation notice:** The English source has changed. Read the [English page](" + url + ").";
+  return text.replace(stamp[0], `${stamp[0]}\n\n${notice}\n`);
+}
+
 export function rewriteSourceLinks(text, from) {
   const [locale, ...sourceParts] = from.split("/");
   const sourceFrom = locales.includes(locale) ? sourceParts.join("/") : from;
@@ -543,6 +629,11 @@ export function rewriteSourceLinks(text, from) {
       if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
       if (fenced) return line;
       return line.replace(/(!?\[[^\]]*\]\()([^\s)]+)(\))/g, (whole, prefix, target, suffix) => {
+        const generated = {
+          "https://github.com/ClickHouse/loom/blob/main/llms.txt": "/docs/llms.txt",
+          "https://github.com/ClickHouse/loom/blob/main/llms-full.txt": "/docs/llms-full.txt",
+        }[target];
+        if (generated) return `${prefix}${generated}${suffix}`;
         if (/^(?:[a-z]+:|\/|#)/i.test(target)) return whole;
         const [path, anchor] = target.split("#", 2);
         const resolved = normalize(join(dirname(sourceFrom), decodeURIComponent(path))).replaceAll("\\", "/");

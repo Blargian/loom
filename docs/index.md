@@ -35,44 +35,30 @@ or [casos de uso en español](https://loom.clickhouse.com/docs/es/use-cases).
 
 [Video demonstration of a cited answer](assets/screenshots/clip-assistant-answer.webm)
 
-<Steps>
-
-<Step title="Getting started">
+## 1. Getting started
 
 Check [what Loom includes](getting-started/whats-included.md), run the
 [quickstart](getting-started/quickstart.md), and [configure models and API keys](getting-started/models-and-keys.md).
 
-</Step>
-
-<Step title="Install and run the server">
+## 2. Install and run the server
 
 Choose a [deployment](operations/deployment.md), configure [single sign-on](operations/sso.md),
 and use the [operations guides](operations/index.md) to run Loom day to day.
 
-</Step>
-
-<Step title="Connect agents">
+## 3. Connect agents
 
 [Connect a coding agent](getting-started/connect-a-coding-agent.md) or choose an
 [integration](features/integrations/index.md) for your editor, MCP client, or framework.
 
-</Step>
-
-<Step title="SDK and API">
+## 4. SDK and API
 
 Find client libraries, commands, and wire contracts in the [reference](reference/index.md).
 
-</Step>
-
-<Step title="Namespaces, access and the memory model">
+## 5. Namespaces, access and the memory model
 
 Read how Loom scopes [identities and namespaces](concepts/identities-and-namespaces.md),
 stores [agent memory](concepts/memory.md), and [ranks retrieval results](concepts/retrieval-and-ranking.md).
 Use [tokens and grants](guides/tokens-and-grants.md) to set access.
-
-</Step>
-
-</Steps>
 
 ## Guides
 
@@ -84,17 +70,11 @@ setups, and tracing a long run.
 The [features index](features/index.md) covers memory, documents, code, work records,
 and access and audit controls.
 
-<Steps>
-
-<Step title="Code index">
+## 6. Code index
 
 Start with the [code-index overview](features/code-index/overview.md), add a
 [repository](features/code-index/repositories.md), and check its
 [indexing status](features/code-index/freshness.md).
-
-</Step>
-
-</Steps>
 
 ## Architecture
 

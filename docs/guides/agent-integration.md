@@ -20,9 +20,7 @@ system_prompt = "You triage support tickets.\n\n" + await agent.guide()
 Over MCP the primer names the call; an Agent-Skills client installs it with
 `npx skills add ClickHouse/loom --skill loom`.
 
-<Steps>
-
-<Step title="Choose the client surface">
+## 1. Choose the client surface
 
 | Surface                                                      | Use it when                                                                                     | What you get                                                                                                                                                                       |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -69,9 +67,7 @@ ID, outcome and latency, and confirm which evidence reached the model. SDK
 Keep startup metadata, context retrieval, investigative lookups, checks and recording
 separate when reporting tool adoption and cost.
 
-</Step>
-
-<Step title="Choose the identity">
+## 2. Choose the identity
 
 Every row carries the identity tuple `(org, namespace, agent, user_id, session_id)`, plus
 `run_id`. The token fixes `org` and the namespaces; the rest travels per call.
@@ -92,9 +88,7 @@ Every row carries the identity tuple `(org, namespace, agent, user_id, session_i
   See [namespace access](tokens-and-grants.md#namespace-access).
 - **No secret or personal identifier in `agent`:** it is stamped on every ledger row.
 
-</Step>
-
-<Step title="Decide what to write">
+## 3. Decide what to write
 
 Pick the plane first. Durable memory is embedded, ranked, conflict-checked and versioned.
 Working memory is read by key and never ranked. Knowledge holds chunked documents.
@@ -135,9 +129,7 @@ that works cases; [trace and resume](trace-and-resume.md) covers checkpoints.
 A statement from the user ("we deploy Tuesdays") is the trigger to write. Do not search
 first; the server handles duplicates and conflicts.
 
-</Step>
-
-<Step title="Read the write's answer">
+## 4. Read the write's answer
 
 A `memory.set` reply is a receipt. Read it:
 
@@ -152,9 +144,7 @@ A `memory.set` reply is a receipt. Read it:
 Pass `if_match_sha256` (from a `memory.get`) when two writers may race on one key; a stale
 hash is refused instead of overwriting.
 
-</Step>
-
-<Step title="Read with one call per question">
+## 5. Read with one call per question
 
 1. **Load context once per task.** `context.pack` returns a token-budgeted bundle: profile
    sections, working memory, the memories relevant to `query`, procedures, and optionally
@@ -187,9 +177,7 @@ else:
     reply = hits[0].content_excerpt
 ```
 
-</Step>
-
-<Step title="Record runs">
+## 6. Record runs
 
 A run is one execution of a task: its goal, what it recalled and relied on, what it wrote and
 its outcome. Recorded runs let ranking learn which memories help ([runs](../features/runs.md)).
@@ -211,9 +199,7 @@ An agent outside the plugins should also hand the finished transcript to
 `memory.set_from_messages` (or close an `agent.session(...)`), so the server extracts what was
 durable.
 
-</Step>
-
-<Step title="Follow the memory skill's review">
+## 7. Follow the memory skill's review
 
 The plugins ship a `loom-memory` skill
 (`integrations/claude-code-plugin/skills/loom-memory/`, generated into the Codex plugin)
@@ -237,10 +223,6 @@ process attested it, and "not verified here" when the check could not run. Other
 skills cover code questions (`loom-code`, also at `skills/loom-code/` for any client),
 reworking a namespace (`loom-optimize`), session restore (`loom-session`) and client health
 (`loom-status`).
-
-</Step>
-
-</Steps>
 
 ## Mistakes to avoid
 

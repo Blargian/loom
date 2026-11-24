@@ -50,9 +50,7 @@ dry_run}`; a dry run adds `memory_type` and `value_preview`. After a move:
 - `memory.get(from_key, follow=true)` serves the new row;
 - `memory.search` and `memory.list` show only the new row.
 
-<Steps>
-
-<Step title="Audit">
+## 1. Audit
 
 ```bash
 loom audit-namespace --org <org> --namespace <ns> --window-days 7 --samples 5
@@ -80,9 +78,7 @@ The dashboard's namespace audit panel shows the same audit. `context.pack` carri
 warnings among `exact_key_store`, `double_encoded_values`, `unembedded_rows` and
 `coordination_as_memory`), so an agent sees it at session start.
 
-</Step>
-
-<Step title="Plan">
+## 2. Plan
 
 Write one section per finding. Only codes the audit returned get a section.
 
@@ -116,17 +112,13 @@ Store the plan as a knowledge document at `loom://<org>/<ns>/_optimize/plan-<YYY
 (`knowledge.upsert` with that `source_uri`), so the owner's approval and the before/after
 numbers live in one place.
 
-</Step>
-
-<Step title="Get approval">
+## 3. Get approval
 
 The namespace owner approves in writing. A plan shown is not a plan approved. A partial
 approval applies the named sections only. If the owner's writer is running (the audit's
 `sets` in the window says so), tell them; the last hour of rows is out of scope either way.
 
-</Step>
-
-<Step title="Apply">
+## 4. Apply
 
 Back up first if the namespace matters: `memory.list … fields=["value"]` to a JSONL file,
 `namespace.snapshot` (HTTP or SDK; it is not served over MCP), or on the server
@@ -153,17 +145,13 @@ curl -s "$LOOM_BASE_URL/v1/memory.move" -H "Authorization: Bearer $LOOM_API_KEY"
     "dry_run": true}'
 ```
 
-</Step>
-
-<Step title="Measure">
+## 5. Measure
 
 Run the audit again over the same window and append a before/after table to the plan
 document (`knowledge.upsert` on the same `source_uri`). Give the owner the
 [writer rules](investigation-agent-memory.md#writer-rules).
 
-</Step>
-
-<Step title="Retire nothing">
+## 6. Retire nothing
 
 Old keys stay readable through the redirect for as long as the owner wants. Once the writer
 uses the new keys, the owner may tombstone the old ones with `memory.delete` (soft:
@@ -172,10 +160,6 @@ uses the new keys, the owner may tombstone the old ones with `memory.delete` (so
 > **Warning:** retiring keys a live writer still reads splits its view: its `memory.get`
 > answers `found: false`, a client may fall back to local state, and two stores then
 > disagree. The redirect exists to prevent that.
-
-</Step>
-
-</Steps>
 
 ## Related
 
