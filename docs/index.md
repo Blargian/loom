@@ -95,5 +95,5 @@ Contributors can start with the [repository guide](development/repository-guide.
 ## Also
 
 Find a definition in the [glossary](glossary.md) or a short answer in the [FAQ](faq.md).
-Agents can use the [documentation index](../llms.txt) or the
+Agents can use the [documentation index](https://loom.clickhouse.com/docs/llms.txt) or the
 [combined Markdown](https://loom.clickhouse.com/docs/llms-full.txt).

@@ -410,33 +410,6 @@ def checks_succeeded(checks: list[dict[str, Any]]) -> bool:
     )
 
 
-def sync_site(repository: str) -> None:
-    """Retry a suppressed or failed deployment after a generated PR has merged."""
-    owner = repository.split("/")[0]
-    merged = api(
-        f"repos/{repository}/pulls?state=closed&head={owner}:i18n/update&base=main&per_page=10"
-    )
-    merged = [item for item in merged if item.get("merged_at") and item.get("merge_commit_sha")]
-    if not merged:
-        return
-    latest = max(merged, key=lambda item: item["merged_at"])
-    merge_sha = latest["merge_commit_sha"]
-    runs = api(f"repos/{repository}/actions/workflows/docs-site.yml/runs?branch=main&per_page=20")
-    for run in runs["workflow_runs"]:
-        if run["status"] == "completed" and run["conclusion"] != "success":
-            continue
-        if run["head_branch"] != "main" or not SHA.fullmatch(run["head_sha"]):
-            continue
-        ancestry = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", merge_sha, run["head_sha"]],
-            cwd=t.ROOT,
-            capture_output=True,
-        )
-        if ancestry.returncode == 0:
-            return
-    command("gh", "workflow", "run", "docs-site.yml", "--ref", "main")
-
-
 def rollout_changes_allowed(base: str, candidate: str, codes: list[str]) -> bool:
     """Retain deferred data; new hidden copies may preserve an earlier pending batch."""
     changed = git("diff", "--name-status", "--no-renames", "-z", base, candidate).split("\0")[:-1]
@@ -453,7 +426,6 @@ def rollout_changes_allowed(base: str, candidate: str, codes: list[str]) -> bool
 def finalize() -> None:
     """Merge only an exact successful hosted CI head, with repository protections."""
     repository = os.environ["GITHUB_REPOSITORY"]
-    sync_site(repository)
     owner = repository.split("/")[0]
     prs = api(f"repos/{repository}/pulls?state=open&head={owner}:i18n/update&base=main&per_page=2")
     if len(prs) != 1:
@@ -498,12 +470,11 @@ def finalize() -> None:
     git("restore", "--source", sha, "--worktree", "--", "README.md", "i18n")
     if t.check(skip_stale=True):
         raise ValueError("translation validation failed before merge")
-    command("mkdocs", "build", "--strict")
+    command("npm", "--prefix", "docs", "run", "build")
     command("gh", "pr", "merge", str(pr["number"]), "--squash", "--match-head-commit", sha)
     merged = api(f"repos/{repository}/pulls/{pr['number']}")
     if not merged["merged"] or merged["head"]["sha"] != sha:
         raise ValueError("translation merge readback does not match validated head")
-    command("gh", "workflow", "run", "docs-site.yml", "--ref", "main")
 
 
 def main(argv: list[str] | None = None) -> int:
