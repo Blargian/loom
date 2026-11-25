@@ -468,6 +468,99 @@ def _lean_symbol(out: dict[str, Any]) -> None:
             d.pop("description")
 
 
+def _edit_test_sources(
+    definitions: list[Any],
+) -> dict[tuple[str, str, int, int, str], list[tuple[int, int]]]:
+    groups: dict[tuple[str, str, int, int, str], list[tuple[int, int]]] = defaultdict(list)
+    for i, definition in enumerate(definitions):
+        if not isinstance(definition, dict) or not isinstance(definition.get("examples"), list):
+            continue
+        for j, example in enumerate(definition["examples"]):
+            if not isinstance(example, dict) or not isinstance(example.get("context"), dict):
+                continue
+            context = example["context"]
+            path, commit, body = example.get("path"), context.get("commit"), context.get("text")
+            start, end = context.get("start_line"), context.get("end_line")
+            if (
+                isinstance(path, str)
+                and path
+                and isinstance(commit, str)
+                and commit
+                and isinstance(body, str)
+                and body
+                and isinstance(start, int)
+                and isinstance(end, int)
+            ):
+                groups[path, commit, start, end, body].append((i, j))
+    return groups
+
+
+def _structured_chars(value: dict[str, Any]) -> int:
+    # Session capture counts the UTF-16 units in compact JSON.
+    rendered = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return len(rendered.encode("utf-16-le", errors="surrogatepass")) // 2
+
+
+def _shared_excerpt(
+    path: str, body: str, definitions: list[Any], locations: list[tuple[int, int]]
+) -> dict[str, Any]:
+    # Capture must read the source and its identifiers in the same piece.
+    callers = dict.fromkeys(
+        caller
+        for i, j in locations
+        if isinstance((caller := definitions[i]["examples"][j].get("caller")), str) and caller
+    )
+    owners = dict.fromkeys(
+        (str(definition.get("symbol") or ""), str(definition.get("path") or ""))
+        for i, _ in locations
+        if (definition := definitions[i])
+    )
+    return {
+        "path": path,
+        "callers": list(callers),
+        "definitions": [{"symbol": symbol, "path": owner_path} for symbol, owner_path in owners],
+        "text": body,
+    }
+
+
+def _share_edit_test_source(out: dict[str, Any]) -> dict[str, Any]:
+    """Keep shared text in a standalone result row for clients that split top-level lists."""
+    if "test_sources" in out:
+        return out
+    definitions = out["definitions"]
+    sources: list[dict[str, Any]] = []
+    references: dict[tuple[int, int], str] = {}
+    for (path, _, _, _, body), locations in _edit_test_sources(definitions).items():
+        if len(locations) < 2:
+            continue
+        pointer = f"#/test_sources/0/excerpts/{len(sources)}/text"
+        text_size = len(json.dumps({"text": body}))
+        ref_size = len(json.dumps({"text_ref": pointer}))
+        excerpt = _shared_excerpt(path, body, definitions, locations)
+        if len(locations) * text_size > len(json.dumps(excerpt)) + len(locations) * ref_size:
+            sources.append(excerpt)
+            references.update(dict.fromkeys(locations, pointer))
+    if not sources:
+        return out
+    shared = {"test_sources": [{"excerpts": sources}]}
+    original_rows = {i for i, _ in references}
+    # A client that retained any old source row can retain the whole source row here.
+    if _structured_chars(shared) > min(
+        _structured_chars({"definitions": [definitions[i]]}) for i in original_rows
+    ):
+        return out
+    updated = [
+        {**d, "examples": list(d["examples"])} if i in original_rows else d
+        for i, d in enumerate(definitions)
+    ]
+    for (i, j), pointer in references.items():
+        example = updated[i]["examples"][j]
+        context = {key: value for key, value in example["context"].items() if key != "text"}
+        updated[i]["examples"][j] = {**example, "context": {**context, "text_ref": pointer}}
+    packed = {**shared, **out, "definitions": updated}
+    return packed if len(json.dumps(packed)) < len(json.dumps(out)) else out
+
+
 _PER_OP = {
     "code.search": _lean_search,
     "code.symbol": _lean_symbol,
@@ -521,6 +614,8 @@ def lean_code(op_name: str, payload: Any, arguments: dict[str, Any] | None = Non
         fn(out)
     if op_name == "code.grep" and arguments is not None:
         _grep_read_continuation(out, arguments)
+    if op_name == "code.edit_context" and out.get("edit_targets") and out.get("definitions"):
+        out = _share_edit_test_source(out)
     _hoist_defaults(out)
     if out.get("candidates") == []:
         out.pop("candidates")
