@@ -12,18 +12,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections import defaultdict
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from server.code.app.spans import code_span
-from server.code.domain.index.test_conventions import is_test_unit_path
+from server.code.domain.index.test_conventions import is_test_unit_path, snake
 from server.code.domain.symbol_body import retained_source_window
 from server.code.store.index import CodeRepo
 from server.embedding.embedder import served_model_label
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
+
+_EXAMPLE_CANDIDATE_LIMIT = 50
+_INDIRECT_TEST_CALLER_LIMIT = 30
 
 
 async def bounded[T](coro: Awaitable[T], fallback: T, seconds: float | None = None) -> T:
@@ -64,6 +68,7 @@ async def usage_examples(
     limit: int = 3,
     context_lines: int = 0,
     tests_only: bool = False,
+    ready: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Call sites of the symbol, optionally restricted to indexed tests."""
     with_context = bool(context_lines and settings.embedding_model)
@@ -73,7 +78,7 @@ async def usage_examples(
             ns,
             symbol_ids,
             direction="callers",
-            limit=50,
+            limit=_EXAMPLE_CANDIDATE_LIMIT,
             with_revision=with_context,
             tests_only=tests_only,
         ),
@@ -92,40 +97,89 @@ async def usage_examples(
     for edge in ranked:
         by_location.setdefault((str(edge["path"]), int(edge["line"])), edge)
     sites = list(by_location.values())
-    baseline = sites[: max(1, limit)]
-    requested = baseline
-    if tests_only and with_context:
-        preferred = _prefer_distinct_test_windows(sites, context_lines)[: len(baseline)]
-        requested = preferred + [edge for edge in baseline if edge not in preferred]
-    out = []
-    revisions: list[str] = []
-    for e in requested:
-        out.append(
-            {
-                "caller": str(e["from_qualified_name"]),
-                "path": str(e["path"]),
-                "line": int(e["line"]),
-                "tier": str(e["tier"]),
-                "test_covered": str(e["path"]) in tested_paths,
-            }
-        )
-        if with_context:
-            revisions.append(str(e.get("indexed_commit") or "").rstrip("\0"))
-    if with_context:
-        model = served_model_label(settings.embedding_model)
-        examples = await asyncio.gather(
-            *(
-                _example_context(repo, org, ns, site, context_lines, model, revision)
-                for site, revision in zip(out, revisions, strict=True)
-            )
-        )
-        # A promoted site only earns a slot when its revision still has source.
-        return [
-            example
-            for edge, example in zip(requested, examples, strict=True)
-            if "context" in example or edge in baseline
-        ][: len(baseline)]
-    return out
+    limit = max(1, limit)
+    ranked = _rank_test_sites(sites) if tests_only else sites
+
+    def location(edge: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "caller": str(edge["from_qualified_name"]),
+            "path": str(edge["path"]),
+            "line": int(edge["line"]),
+            "tier": str(edge["tier"]),
+            "test_covered": str(edge["path"]) in tested_paths,
+        }
+
+    if not with_context:
+        return [location(edge) for edge in ranked[:limit]]
+
+    model = served_model_label(settings.embedding_model)
+
+    async def read(edge: dict[str, Any]) -> dict[str, Any]:
+        revision = str(edge.get("indexed_commit") or "").rstrip("\0")
+        return await _example_context(repo, org, ns, location(edge), context_lines, model, revision)
+
+    if not tests_only:
+        return await asyncio.gather(*(read(edge) for edge in ranked[:limit]))
+    preferred = _prefer_distinct_test_windows(ranked, context_lines)[:limit]
+    baseline = sites[:limit]
+    backups = _prefer_distinct_test_windows(sites, context_lines)[:limit] + baseline
+    backed = await _retained_examples(preferred, backups, limit=limit, read=read, ready=ready)
+    found = {(example["path"], example["line"]) for example in backed}
+    locations = [location(edge) for edge in baseline if (edge["path"], edge["line"]) not in found]
+    return (backed + locations)[:limit]
+
+
+async def _retained_examples(
+    preferred: list[dict[str, Any]],
+    backups: list[dict[str, Any]],
+    *,
+    limit: int,
+    read: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
+    ready: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Read together and publish each verified window to the caller's timeout fallback."""
+    candidates: dict[tuple[str, int], dict[str, Any]] = {}
+    for edge in (*preferred, *backups):
+        candidates.setdefault((edge["path"], edge["line"]), edge)
+    completed: list[dict[str, Any] | None] = [None] * len(candidates)
+
+    async def capture(index: int, edge: dict[str, Any]) -> None:
+        example = await read(edge)
+        if "context" in example:
+            completed[index] = example
+            if ready is not None:
+                ready[:] = [row for row in completed if row is not None][:limit]
+
+    await asyncio.gather(*(capture(i, edge) for i, edge in enumerate(candidates.values())))
+    return [row for row in completed if row is not None][:limit]
+
+
+def _test_name_words(name: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", snake(name))) - {"test", "tests"}
+
+
+def _rank_test_sites(sites: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Put related test functions first, with one source window per test before repeats."""
+    counts: dict[tuple[str, str], int] = defaultdict(int)
+    for site in sites:
+        counts[site["path"], site["from_qualified_name"]] += 1
+
+    def key(site: dict[str, Any]) -> tuple[bool, int, int]:
+        caller = site["from_qualified_name"]
+        name = caller.rsplit("::", 1)[-1]
+        _, *target = str(site.get("to_qualified_name") or "").split("::")
+        related = _test_name_words(name) & _test_name_words("_".join(target[-2:]))
+        return not snake(name).startswith("test_"), -len(related), -counts[site["path"], caller]
+
+    picked: dict[tuple[str, str], dict[str, Any]] = {}
+    repeats = []
+    for site in sorted(sites, key=key):
+        caller = site["path"], site["from_qualified_name"]
+        if caller in picked:
+            repeats.append(site)
+        else:
+            picked[caller] = site
+    return list(picked.values()) + repeats
 
 
 async def indirect_test_examples(
@@ -136,6 +190,8 @@ async def indirect_test_examples(
     definition: dict[str, Any],
     revision: str,
     context_lines: int,
+    *,
+    ready: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Verified test source reached through one non-test caller at the same revision."""
     if not (revision and context_lines and settings.embedding_model):
@@ -150,7 +206,7 @@ async def indirect_test_examples(
         limit=12,
         min_confidence=0.8,
         with_revision=True,
-        distinct_callers_at=revision,
+        caller_revision=revision,
     )
     bridges: dict[str, dict[str, Any]] = {}
     for edge in callers:
@@ -169,11 +225,12 @@ async def indirect_test_examples(
         ns,
         list(bridges),
         direction="callers",
-        limit=30,
+        limit=2 * _INDIRECT_TEST_CALLER_LIMIT,
         min_confidence=0.8,
         with_revision=True,
         tests_only=True,
-        distinct_callers_at=revision,
+        caller_revision=revision,
+        sites_per_caller=2,
     )
     if not tests:
         return []
@@ -184,17 +241,33 @@ async def indirect_test_examples(
     if files.get(path, {}).get("indexed_commit") != revision:
         return []
     sites = _verified_indirect_sites(tests, bridges, files, revision)
-    candidates = _prefer_distinct_test_windows(sites, context_lines)[:6]
-    for site in candidates:
-        site.pop("indexed_commit")
-    model = served_model_label(settings.embedding_model)
-    examples = await asyncio.gather(
-        *(
-            _example_context(repo, org, ns, site, context_lines, model, revision)
-            for site in candidates
-        )
+    candidates = _prefer_distinct_test_windows(_rank_test_sites(sites), context_lines)[:6]
+    by_caller: dict[str, dict[str, Any]] = {}
+    for edge in tests:
+        by_caller.setdefault(str(edge["from_symbol_id"]), edge)
+    original = _verified_indirect_sites(
+        list(by_caller.values())[:_INDIRECT_TEST_CALLER_LIMIT], bridges, files, revision
     )
-    return [row for row in examples if "context" in row][:3]
+    backups = _prefer_distinct_test_windows(original, context_lines)[:6]
+    model = served_model_label(settings.embedding_model)
+
+    async def read(edge: dict[str, Any]) -> dict[str, Any]:
+        bridge = bridges[str(edge["to_symbol_id"])]
+        site = {
+            "caller": str(edge["from_qualified_name"]),
+            "path": str(edge["path"]),
+            "line": int(edge["line"]),
+            "tier": str(edge["tier"]),
+            "evidence": "indirect_call",
+            "via": {
+                "symbol": str(bridge["from_qualified_name"]),
+                "path": str(bridge["path"]),
+                "line": int(bridge["line"]),
+            },
+        }
+        return await _example_context(repo, org, ns, site, context_lines, model, revision)
+
+    return await _retained_examples(candidates, backups, limit=3, read=read, ready=ready)
 
 
 def _verified_indirect_sites(
@@ -222,22 +295,7 @@ def _verified_indirect_sites(
         ):
             continue
         path, line = str(edge["path"]), int(edge["line"])
-        by_location.setdefault(
-            (path, line),
-            {
-                "caller": str(edge["from_qualified_name"]),
-                "path": path,
-                "line": line,
-                "tier": str(edge["tier"]),
-                "indexed_commit": revision,
-                "evidence": "indirect_call",
-                "via": {
-                    "symbol": str(bridge["from_qualified_name"]),
-                    "path": str(bridge["path"]),
-                    "line": int(bridge["line"]),
-                },
-            },
-        )
+        by_location.setdefault((path, line), edge)
     return list(by_location.values())
 
 
