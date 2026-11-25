@@ -501,6 +501,61 @@ async def test_symbol_reads_test_examples_with_the_definition(code_env, monkeypa
     assert example["context"]["text"].strip() == call
 
 
+@pytest.mark.parametrize("older_site_line", [None, 3, 20])
+async def test_edit_context_prefers_distinct_test_source_windows(
+    code_env, monkeypatch, older_site_line
+) -> None:
+    from server.code.api.models_symbol import CodeEditContextInput
+    from server.code.app.symbol import handle_code_edit_context
+    from server.embedding.fake import fake_model_name
+    from server.settings import settings
+
+    repo, org, ns = code_env
+    monkeypatch.setattr(settings, "code_intel_enabled", True)
+    monkeypatch.setattr(settings, "embedding_model", fake_model_name(settings.embedding_dim))
+    await _ingest(repo, org, ns)
+    path = "tests/test_examples.cpp"
+    source = (
+        b"void test_first() {\n    DB::doWork();\n    DB::doWork();\n}\n"
+        + b"\n" * 30
+        + b"void test_second() { DB::doWork(); }\n"
+        + b"\n" * 30
+        + b"void test_third() { DB::doWork(); }\n"
+    )
+    await _ingest(repo, org, ns, source=source, path=path)
+    if older_site_line is not None:
+        repo_type = type(repo)
+        read_edges = repo_type.edges_for_symbols
+
+        async def with_older_site(self, *args, **kwargs):
+            edges = await read_edges(self, *args, **kwargs)
+            if kwargs.get("tests_only"):
+                after_line = 3 if older_site_line == 3 else 35
+                index, adjacent = next(
+                    (i, row)
+                    for i, row in enumerate(edges)
+                    if row["path"] == path and row["line"] == after_line
+                )
+                edges.insert(
+                    index + 1, {**adjacent, "line": older_site_line, "indexed_commit": "b" * 40}
+                )
+            return edges
+
+        monkeypatch.setattr(repo_type, "edges_for_symbols", with_older_site)
+    response = await handle_code_edit_context(
+        CodeEditContextInput(org=org, namespace=ns, name="DB::doWork", include_lessons=False)
+    )
+    (definition,) = response.definitions
+    third_line = 3 if older_site_line == 20 else 66
+    assert [(site["path"], site["line"]) for site in definition.examples] == [
+        (path, 2),
+        (path, 35),
+        (path, third_line),
+    ]
+    assert all(site["context"]["commit"] == "a" * 40 for site in definition.examples)
+    assert "DB::doWork();\n    DB::doWork();" in definition.examples[0]["context"]["text"]
+
+
 async def test_symbol_reads_a_test_that_passes_a_class_to_a_decorator(
     code_env, monkeypatch
 ) -> None:
