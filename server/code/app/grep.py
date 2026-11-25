@@ -405,17 +405,18 @@ async def _grep_lines(
     neighbours, anchors_capped, neighbour_tokens, route = await _grep_neighbours(
         repo, org, ns, input, matches, route, budget=budget
     )
-    coverage = await asyncio.to_thread(_line_coverage_fields, scan.chunks, budget)
+    exact_coverage = await asyncio.to_thread(_line_coverage_fields, scan.chunks, budget)
+    coverage = dict(exact_coverage)
     extra_related = None
-    if not (related_pattern or offset or scan.truncated or coverage.get("partial")):
+    if not (related_pattern or offset or coverage.get("partial")):
         extra_related, extra_coverage = await _extra_related_source(
             repo,
             org,
             ns,
             input,
             scope=scope,
-            matches=scan.matches if isinstance(input.pattern, list) else matches,
-            match_commits=scan.match_commits,
+            matches=matches,
+            scan=scan,
             exact_definitions=bodies.get("definitions", []),
             limit=served_limit,
             budget=budget,
@@ -458,8 +459,8 @@ async def _grep_lines(
             run_id=trace_run_id,
             chunks_matched=scan.chunks_matched,
             truncated=scan.truncated,
-            partial=bool(coverage.get("partial")),
-            partial_reason=str(coverage.get("partial_reason") or ""),
+            partial=bool(exact_coverage.get("partial")),
+            partial_reason=str(exact_coverage.get("partial_reason") or ""),
             context_source=context_source,
             match_commits=scan.match_commits,
         )
@@ -565,7 +566,7 @@ def _label_related(
         )
     if extra and extra.matches:
         note = "Related source shows where the call's argument is used."
-        if not matches:
+        if not matches and not scan.truncated:
             note = "No exact match in the indexed scope. " + note
     return extra, note
 
@@ -620,6 +621,18 @@ def _missing_batch_argument(input: CodeGrepInput, matches: list[dict[str, Any]])
     return argument
 
 
+def _batch_prefix_argument(input: CodeGrepInput, patterns: list[str], *, truncated: bool) -> str:
+    if not input.related_on_prefix or not any(
+        _QUALIFIED_ARGUMENT_PREFIX.fullmatch(pattern.strip()) for pattern in patterns
+    ):
+        return ""
+    argument = _batch_dependency_argument(input)
+    fold = str if input.case_sensitive else ascii_lower
+    if not truncated and fold(argument) in {fold(pattern) for pattern in patterns}:
+        return ""
+    return argument
+
+
 async def _related_dependencies(
     repo: CodeRepo,
     org: str,
@@ -637,9 +650,16 @@ async def _related_dependencies(
     if incomplete or not input.include_dependencies:
         return related, ""
     if related is not None:
-        return related, await add_dependencies(
-            repo, org, ns, input, related, scope, scan.match_commits, budget
+        evidence = (
+            related.model_copy(update={"matches": [*matches, *related.matches]})
+            if isinstance(input.pattern, list)
+            else related
         )
+        reason = await add_dependencies(
+            repo, org, ns, input, evidence, scope, scan.match_commits, budget
+        )
+        related.dependencies = evidence.dependencies
+        return related, reason
     if not matches or not whole_page or scan.truncated:
         return None, ""
     argument = _batch_dependency_argument(input)
@@ -717,7 +737,7 @@ async def _extra_related_source(
     *,
     scope: Any,
     matches: list[dict[str, Any]],
-    match_commits: dict[tuple[str, int], str],
+    scan: _GrepLineScan,
     exact_definitions: list[dict[str, Any]],
     limit: int,
     budget: code_deadline.Budget | None,
@@ -725,18 +745,21 @@ async def _extra_related_source(
     if input.regex:
         return None, {}
     batch = isinstance(input.pattern, list)
-    if batch:
-        argument = _missing_batch_argument(input, matches)
+    if isinstance(input.pattern, list):
+        argument = _batch_prefix_argument(input, input.pattern, truncated=scan.truncated)
+        if not argument and not scan.truncated:
+            argument = _missing_batch_argument(input, scan.matches)
+        stage = "related argument scan"
     else:
-        call = _QUALIFIED_ARGUMENT_PREFIX.fullmatch(str(input.pattern).strip())
-        argument = call[1] if input.related_on_prefix and call is not None else ""
-    stage = "related argument scan" if batch else "related call prefix scan"
+        call = _QUALIFIED_ARGUMENT_PREFIX.fullmatch(input.pattern.strip())
+        argument = call[1] if input.related_on_prefix and not scan.truncated and call else ""
+        stage = "related call prefix scan"
     if not argument or not _second_scan_allowed(budget, stage):
         return None, _partial_fields(budget)
     try:
         async with asyncio.timeout(None if budget is None else budget.left_ms() / 1000):
             evidence, coverage = await _read_related_source(
-                repo, org, ns, input, argument, scope, matches, match_commits, limit, budget
+                repo, org, ns, input, argument, scope, matches, scan, limit, budget
             )
     except TimeoutError:
         return None, {"partial": True, "partial_reason": f"{stage} timed out"}
@@ -748,7 +771,7 @@ async def _extra_related_source(
             input,
             evidence.matches,
             budget,
-            match_commits=match_commits,
+            match_commits=scan.match_commits,
             covered_by=exact_definitions,
         )
         evidence = evidence.model_copy(update=bodies)
@@ -763,7 +786,7 @@ async def _read_related_source(
     argument: str,
     scope: Any,
     matches: list[dict[str, Any]],
-    match_commits: dict[tuple[str, int], str],
+    scan: _GrepLineScan,
     limit: int,
     budget: code_deadline.Budget | None,
 ) -> tuple[RelatedGrepEvidence | None, dict[str, Any]]:
@@ -790,7 +813,8 @@ async def _read_related_source(
     for match in matches:
         exact_by_path[match["path"]].append(match)
     exact_lines = {(match["path"], match["line"]) for match in matches}
-    exact_revisions = match_revisions(matches, match_commits)
+    exact_paths = {match["path"] for match in scan.matches}
+    exact_revisions = match_revisions(scan.matches, scan.match_commits)
     related_revisions = match_revisions(candidates, commits)
     prefix = isinstance(input.pattern, str)
     other_sites = [
@@ -807,7 +831,7 @@ async def _read_related_source(
         for match in other_sites
         if match["path"] in related_revisions
         and (
-            match["path"] not in exact_by_path
+            match["path"] not in exact_paths
             or exact_revisions.get(match["path"]) == related_revisions[match["path"]]
         )
     ]
@@ -838,7 +862,7 @@ async def _read_related_source(
         )
         context = page_contexts(source, page, radius)
     evidence = RelatedGrepEvidence(pattern=argument, matches=page, truncated=truncated, **context)
-    match_commits.update(
+    scan.match_commits.update(
         {key: commits[key] for match in page if (key := (match["path"], match["line"])) in commits}
     )
     return evidence, coverage
