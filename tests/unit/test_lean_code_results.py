@@ -317,6 +317,49 @@ def test_grep_scope_drops_its_own_path_and_enclosing_drops_the_repeated_name() -
     assert e["resolved"] == 1 and "took_ms" not in e
 
 
+def test_grep_excerpts_offer_a_batch_for_unread_declarations() -> None:
+    long = {
+        "path": "src/a.py",
+        "line": 5,
+        "scope": "first",
+        "scope_start_line": 5,
+        "scope_end_line": 16,
+    }
+    short = {
+        "path": "src/b.py",
+        "line": 2,
+        "scope": "quick",
+        "scope_start_line": 2,
+        "scope_end_line": 3,
+    }
+    unusual = ["src/plugins v2/routes.py", "scripts/bootstrap", "docs/overview.md"]
+    more = [{**long, "path": path} for path in (*unusual, "examples/demo.IPYNB", "a" * 1025)]
+    payload = {
+        "matches": [long, {**long, "line": 7}, long, short, *more],
+        "contexts": [
+            {"path": "src/a.py", "start_line": 4, "end_line": 8, "text": "partial"},
+            {"path": "src/b.py", "start_line": 1, "end_line": 4, "text": "complete"},
+        ],
+    }
+    arguments = {"include_body": False, "org": "secondary", "namespace": "repo"}
+    result = lr.mcp_op_result("code.grep", payload, arguments, None, toolset="coding")
+    suggestion = result.pop("next")
+    label, _, params = suggestion.partition(" with ")
+    assert label == "For the full source, call loom_code_read"
+    assert json.loads(params) == {
+        "ranges": [
+            {"path": path, "start_line": 5, "end_line": 16} for path in ("src/a.py", *unusual)
+        ],
+        "org": "secondary",
+        "namespace": "repo",
+    }
+    assert result == lr.mcp_op_result("code.grep", payload, {"include_body": True}, None)
+    assert "next" not in lr.mcp_op_result(
+        "code.grep", {**payload, "contexts": []}, arguments, None, toolset="coding"
+    )
+    assert "next" not in lr.mcp_op_result("code.grep", payload, arguments, None, toolset="core")
+
+
 def test_related_grep_keeps_source_and_compacts_it_like_exact_hits() -> None:
     match = {
         "path": "server/a.py",
