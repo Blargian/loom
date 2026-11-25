@@ -37,25 +37,48 @@ def test_astro_pages_submit_their_canonical_public_urls() -> None:
     urls = indexnow.urls_for(
         {
             "docs/pages/home.astro": "M",
+            "docs/pages/ja/home.astro": "A",
             "docs/pages/platform.astro": "M",
             "docs/pages/adoption.astro": "M",
         }
     )
-    assert urls == [f"{ORIGIN}/", f"{ORIGIN}/adoption", f"{ORIGIN}/platform"]
+    assert urls == [f"{ORIGIN}/", f"{ORIGIN}/adoption", f"{ORIGIN}/ja", f"{ORIGIN}/platform"]
     assert indexnow.payload(urls, "a" * 32)["urlList"] == urls
 
 
 def test_public_components_and_shared_build_inputs_submit_affected_pages() -> None:
     public_pages = sorted(
-        f"{ORIGIN}{route}" for route in ("/", "/adoption", "/enterprise", "/platform", "/telemetry")
+        f"{ORIGIN}{route}"
+        for route in (
+            "/",
+            "/adoption",
+            "/enterprise",
+            "/es",
+            "/ja",
+            "/ko",
+            "/platform",
+            "/pt-BR",
+            "/telemetry",
+            "/zh-CN",
+        )
     )
     assert indexnow.urls_for({"docs/components/SiteFrame.astro": "M"}) == public_pages
     assert indexnow.urls_for({"docs/lib/adoption-data.mjs": "M"}) == public_pages
     assert indexnow.urls_for({"docs/lib/adoption-data.test.mjs": "M"}) == []
     assert indexnow.urls_for({"docs/scripts/public-pages.json": "M"}) == public_pages
+    assert indexnow.urls_for({"docs/scripts/home-locales.json": "M"}) == public_pages
     assert indexnow.urls_for({"docs/theme.css": "M"}) == sorted(
         [*public_pages, *indexnow.every_page()]
     )
+
+
+def test_changed_translation_availability_submits_homepage_links() -> None:
+    translation = "i18n/ja/docs/use-cases/knowledge-factory.md"
+    for status in ("A", "D"):
+        urls = indexnow.urls_for({translation: status})
+        assert SITE + "ja/use-cases/knowledge-factory/" in urls
+        assert ORIGIN + "/ja" in urls
+        assert ORIGIN + "/platform" not in urls
 
 
 def test_renamed_and_deleted_public_routes_keep_their_previous_urls(monkeypatch) -> None:
