@@ -17,12 +17,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections import defaultdict
 from collections.abc import Sequence
 from typing import Any, NamedTuple
 
 from server.code.domain.anchor import local_name
 from server.memory.api.models_for_file import MemoryForFileInput
+from server.memory.app.code_link_reads import inputs_now
 from server.memory.app.code_plane_reads import PER_PATH_ROWS
 from server.memory.app.for_file import CHARS_PER_TOKEN, listing_rows, value_text
 from server.memory.domain.decision_schema import CONSTRAINT_TAG, is_whole_row
@@ -106,6 +108,43 @@ class GrepMatchLines(NamedTuple):
             return True
         start, end = link["start_line"], link["end_line"]
         return 0 < start <= end and all(line > 0 and not start <= line <= end for line in lines)
+
+
+async def paths_with_matched_links(
+    org: str,
+    namespaces: Sequence[str],
+    trunk_ns: str,
+    paths: Sequence[str],
+    symbols: dict[str, set[str]],
+    grep_lines: GrepMatchLines,
+    *,
+    timeout_s: float,
+) -> set[str]:
+    """Files with a visible, current lesson for a named scope in the response."""
+    until = time.monotonic() + timeout_s
+    revisions = [
+        (path, next(iter(commits)))
+        for path in paths
+        if path in symbols
+        and len(commits := grep_lines.revisions.get(path, set())) == 1
+        and "" not in commits
+    ]
+    links = await code_links.path_hint_links(org, namespaces, trunk_ns, revisions, until=until)
+    matches = [
+        link
+        for link in links
+        if local_name(link["qualified_name"], path := link["path"]) in symbols[path]
+    ]
+    if not matches:
+        return set()
+    candidates = sorted({(link["namespace"], link["mid"]) for link in matches})
+    heads = await code_links.path_hint_heads(org, candidates, until=until)
+    hashes = {(head["namespace"], head["mid"]): inputs_now(org, head) for head in heads}
+    return {
+        link["path"]
+        for link in matches
+        if hashes.get((link["namespace"], link["mid"])) == link["inputs_hash"]
+    }
 
 
 def _ordered_candidates(
