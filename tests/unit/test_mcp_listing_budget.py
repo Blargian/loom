@@ -399,16 +399,24 @@ def test_the_compact_profile_keeps_the_tool_names():
 def test_compact_coding_grep_advertises_search_options_and_edit_routing():
     compact = {t["name"]: t for t in _listing("coding", True, "compact")}
     description = compact["loom_code_grep"]["description"]
-    assert "Find text and enclosing bodies" in description
-    assert "Keep bodies for edits" in description
-    assert "Batch code and test literals or use `regex: true` for RE2" in description
-    assert "For locations only, set `include_body: false` and `context_lines: 0`" in description
-    assert "Scope by path" in description
-    assert "Use loom_code_edit_context for code and tests" in description
+    assert "Find text. Keep bodies for edits" in description
+    assert "Batch code and test-name prefixes" in description
+    assert "Omit `path_prefix`. `path_globs` can cover both" in description
+    assert "`regex: true` uses RE2" in description
+    assert "Locations use `include_body: false`, `context_lines: 0`" in description
+    assert "loom_code_edit_context for edits" in description
     assert "loom_code_search" in description
 
     full = {t["name"]: t for t in _listing("coding", True, "full")}
     assert "Scope with `path_prefix` or `path_globs`" in full["loom_code_grep"]["description"]
+
+
+@pytest.mark.parametrize("toolset", ["core", "all", "readonly"])
+def test_compact_grep_retains_batch_scope_and_locations(toolset: str):
+    tools = {t["name"]: t for t in _listing(toolset, True, "compact")}
+    description = tools["loom_code_grep"]["description"]
+    assert "Path filters scope the batch" in description
+    assert "`context_lines: 0` for locations" in description
 
 
 def test_compact_coding_grep_advertises_common_args_and_help_lists_the_rest():
