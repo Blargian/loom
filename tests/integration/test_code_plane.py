@@ -721,6 +721,113 @@ async def test_edit_context_reads_tests_through_a_verified_caller(code_env, monk
         assert context["text"] == "".join(lines[context["start_line"] - 1 : context["end_line"]])
 
 
+@pytest.mark.parametrize(
+    "case", ["current", "stale", "compiled_other_receiver", "compiled_other_pair"]
+)
+async def test_edit_context_labels_unresolved_repeated_test_calls(code_env, monkeypatch, case):
+    from server.code.api.models_symbol import CodeEditContextInput
+    from server.code.app.symbol import handle_code_edit_context
+    from server.code.store.index import build_row
+    from server.embedding.fake import fake_model_name
+    from server.settings import settings
+
+    repo, org, ns = code_env
+    monkeypatch.setattr(settings, "code_intel_enabled", True)
+    monkeypatch.setattr(settings, "embedding_model", fake_model_name(settings.embedding_dim))
+    revision = "a" * 40
+    source_path = "src/counter.py"
+    await _ingest(
+        repo,
+        org,
+        ns,
+        path=source_path,
+        source=(
+            b"def apply(item, scale):\n    return item * scale\n\n"
+            b"class Counter:\n    def submit(self, item, scale):\n"
+            b"        return apply(item, scale)\n\n"
+            b"class StubCounter:\n    def submit(self, item, scale):\n        return None\n"
+        ),
+    )
+    unrelated = "src/unrelated.py"
+    await _ingest(
+        repo, org, ns, path=unrelated, source=b"def other(client, item):\n    client.submit(item)\n"
+    )
+    path = "tests/test_counter.py"
+    tests = (
+        b"def test_repeated_item(client, other, first, second, item):\n"
+        b"    client.submit(first, scale=1)\n    client.submit(second, scale=2)\n"
+        + b"\n" * 10
+        + b"    client.submit(item, scale=1)\n    client.submit(item, scale=2)\n"
+    )
+    repeated = len(tests.splitlines()) - 1
+    expected_lines = {2, 3, repeated, repeated + 1}
+    if case == "compiled_other_pair":
+        tests += b"    other.submit(item, scale=3)\n    other.submit(item, scale=4)\n"
+        expected_lines.update({repeated + 2, repeated + 3})
+    await _ingest(
+        repo, org, ns, path=path, source=tests, sha="b" * 40 if case == "stale" else revision
+    )
+    assert (await repo.live_call_misses_for_names(org, ns, ["submit"], limit=1))[0][
+        "path"
+    ] == unrelated
+    assert (await repo.live_call_misses_for_names(org, ns, ["submit"], limit=1, paths=[path]))[0][
+        "path"
+    ] == path
+    declines = await repo.live_call_misses_for_names(org, ns, ["submit"], paths=[path])
+    assert {row["line"] for row in declines} == expected_lines
+    if case.startswith("compiled_"):
+        target = (await repo.symbols_by_name(org, ns, "src.counter::StubCounter::submit"))[0]
+        await repo.insert_rows(
+            "code_edges",
+            [
+                build_row(
+                    "code_edges",
+                    org=org,
+                    namespace=ns,
+                    tier="scip",
+                    edge_kind="calls",
+                    path=path,
+                    line=site["line"],
+                    from_symbol_id=site["from_symbol_id"],
+                    from_qualified_name=site["from_qualified_name"],
+                    to_symbol_id=target["symbol_id"],
+                    to_qualified_name=target["qualified_name"],
+                    confidence=1.0,
+                    indexed_commit=revision,
+                )
+                for site in declines
+                if site["line"] in (repeated, repeated + 1)
+            ],
+        )
+    response = await handle_code_edit_context(
+        CodeEditContextInput(
+            org=org, namespace=ns, name=f"{source_path}:apply", include_lessons=False
+        )
+    )
+    (definition,) = response.definitions
+    if case in {"stale", "compiled_other_receiver"}:
+        assert definition.examples == []
+        return
+    (example,) = definition.examples
+    assert (example["path"], example["line"], example["evidence"]) == (
+        path,
+        repeated + 2 if case == "compiled_other_pair" else repeated,
+        "name_reference",
+    )
+    assert example["via"] == {
+        "symbol": "src.counter::Counter::submit",
+        "path": source_path,
+        "line": 6,
+    }
+    assert example["context"]["commit"] == revision
+    expected_text = (
+        "other.submit(item, scale=4)"
+        if case == "compiled_other_pair"
+        else "client.submit(item, scale=2)"
+    )
+    assert expected_text in example["context"]["text"]
+
+
 async def test_edit_context_does_not_attach_indirect_example_to_an_overload(
     code_env, monkeypatch
 ) -> None:
