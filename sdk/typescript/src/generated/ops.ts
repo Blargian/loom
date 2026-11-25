@@ -9561,6 +9561,7 @@ export interface SessionBriefGetInput {
   from_session?: string;
   project?: string;
   revision?: number;
+  snapshot_id?: string;
   include_sections?: boolean;
   full?: boolean;
 }
@@ -9568,6 +9569,7 @@ export interface SessionBriefGetInput {
 export interface BriefSections {
   goal?: string;
   status?: string;
+  verification?: string;
   decisions?: BriefDecision[];
   dead_ends?: BriefDeadEnd[];
   done?: BriefDone[];
@@ -9604,6 +9606,8 @@ export interface SessionBriefGetOutput {
   found: boolean;
   brief_key?: string;
   revision?: number;
+  snapshot_id?: string;
+  snapshot_key?: string;
   rendered?: string;
   sections?: BriefSections | null;
   project?: string;
@@ -9655,6 +9659,11 @@ export interface SessionBriefListOutput {
   rendered?: string;
 }
 
+export interface BriefCheckout {
+  dirty?: boolean | null;
+  head_in_remote_refs?: boolean | null;
+}
+
 export interface BriefEvent {
   kind: "user" | "assistant" | "edit" | "command" | "error" | "read" | "search" | "tool" | "note" | "summary";
   text?: string;
@@ -9675,6 +9684,7 @@ export interface SessionBriefSaveInput {
   repo?: string;
   branch?: string;
   head_sha?: string;
+  checkout?: BriefCheckout | null;
   trigger?: "precompact" | "session_end" | "stop" | "manual" | "model";
   events?: BriefEvent[];
   sections?: BriefSections | null;

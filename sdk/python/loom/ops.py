@@ -19498,6 +19498,7 @@ class SessionBriefGetInput(TypedDict, total=False):
     from_session: NotRequired[str]
     project: NotRequired[str]
     revision: NotRequired[int]
+    snapshot_id: NotRequired[str]
     include_sections: NotRequired[bool]
     full: NotRequired[bool]
 
@@ -19515,6 +19516,7 @@ class SessionBriefGetBody(TypedDict, total=False):
     from_session: NotRequired[str]
     project: NotRequired[str]
     revision: NotRequired[int]
+    snapshot_id: NotRequired[str]
     include_sections: NotRequired[bool]
     full: NotRequired[bool]
 
@@ -19523,6 +19525,8 @@ class SessionBriefGetOutput(TypedDict, total=False):
     found: Required[bool]
     brief_key: NotRequired[str]
     revision: NotRequired[int]
+    snapshot_id: NotRequired[str]
+    snapshot_key: NotRequired[str]
     rendered: NotRequired[str]
     sections: NotRequired[Optional["BriefSections"]]
     project: NotRequired[str]
@@ -19546,6 +19550,7 @@ class BriefSections(TypedDict, total=False):
 
     goal: NotRequired[str]
     status: NotRequired[str]
+    verification: NotRequired[str]
     decisions: NotRequired[list["BriefDecision"]]
     dead_ends: NotRequired[list["BriefDeadEnd"]]
     done: NotRequired[list["BriefDone"]]
@@ -19640,12 +19645,20 @@ class SessionBriefSaveInput(TypedDict, total=False):
     repo: NotRequired[str]
     branch: NotRequired[str]
     head_sha: NotRequired[str]
+    checkout: NotRequired[Optional["BriefCheckout"]]
     trigger: NotRequired[Literal["precompact", "session_end", "stop", "manual", "model"]]
     events: NotRequired[list["BriefEvent"]]
     sections: NotRequired[Optional["BriefSections"]]
     event_cursor: NotRequired[str]
     if_revision: NotRequired[Optional[int]]
     use_llm: NotRequired[Optional[bool]]
+
+
+class BriefCheckout(TypedDict, total=False):
+    "Git observations from the sender's checkout at save time."
+
+    dirty: NotRequired[Optional[bool]]
+    head_in_remote_refs: NotRequired[Optional[bool]]
 
 
 class BriefEvent(TypedDict, total=False):
@@ -19685,6 +19698,7 @@ class SessionBriefSaveBody(TypedDict, total=False):
     repo: NotRequired[str]
     branch: NotRequired[str]
     head_sha: NotRequired[str]
+    checkout: NotRequired[Optional["BriefCheckout"]]
     trigger: NotRequired[Literal["precompact", "session_end", "stop", "manual", "model"]]
     events: NotRequired[list["BriefEvent"]]
     sections: NotRequired[Optional["BriefSections"]]
