@@ -281,6 +281,12 @@ class _GrepLineScan:
     batch_partial_reason: str = ""
 
 
+def _terminated_lines(row: dict[str, Any]) -> int:
+    # The file row counts its LF bytes plus one. Each lower coordinate has
+    # a physical terminator, including when the chunker split a long line.
+    return max(0, int(row.get("source_loc") or 0) - int(row["start_line"]))
+
+
 def _missing_chunk_patterns(
     patterns: list[str],
     chunks: list[dict[str, Any]],
@@ -290,7 +296,10 @@ def _missing_chunk_patterns(
     deadline: float | None,
 ) -> list[str]:
     fold = str if case_sensitive else ascii_lower
-    remaining = list(dict.fromkeys(fold(pattern) for pattern in patterns if "\n" not in pattern))
+    remaining = list(
+        dict.fromkeys(fold(pattern) for pattern in patterns if "\n" not in pattern[:-1])
+    )
+    needs_endings = any(literal.endswith("\n") for literal in remaining)
     scanned = 0
     for chunk in chunks:
         if deadline is not None and time.monotonic() >= deadline:
@@ -302,7 +311,12 @@ def _missing_chunk_patterns(
             break
         if lines := retained_source_lines(chunk):
             source = fold("\n".join(line.removesuffix("\n").removesuffix("\r") for line in lines))
-            remaining = [literal for literal in remaining if literal not in source]
+            raw = fold("".join(lines[: _terminated_lines(chunk)])) if needs_endings else ""
+            remaining = [
+                literal
+                for literal in remaining
+                if literal not in (raw if literal.endswith("\n") else source)
+            ]
         if not remaining:
             break
     return remaining
@@ -1100,18 +1114,26 @@ def _matching_source_lines(
     pattern: str | list[str],
     line_re: Any,
     fold_case: Callable[[str], str],
-) -> Iterator[tuple[int, str, str]]:
-    for offset, line in enumerate(lines):
-        line = line.removesuffix("\n").removesuffix("\r")
+    *,
+    terminated_lines: int,
+) -> Iterator[tuple[int, str, str, str]]:
+    literals = [pattern] if isinstance(pattern, str) else pattern
+    endings = (
+        [literal for literal in literals if literal.endswith("\n") and "\n" not in literal[:-1]]
+        if terminated_lines and line_re is None
+        else []
+    )
+    plain = [literal for literal in literals if "\n" not in literal] if endings else pattern
+    for offset, raw in enumerate(lines):
+        line = raw.removesuffix("\n").removesuffix("\r")
         hay = fold_case(line)
+        with_ending = fold_case(raw) if endings and offset < terminated_lines else ""
         if line_re is not None:
             hit = line_re.search(line)
         else:
-            hit = (
-                pattern in hay if isinstance(pattern, str) else any(text in hay for text in pattern)
-            )
-        if hit:
-            yield offset, line, hay
+            hit = plain in hay if isinstance(plain, str) else any(text in hay for text in plain)
+        if hit or (endings and any(text in with_ending for text in endings)):
+            yield offset, line, hay, with_ending
 
 
 def _matching_lines(
@@ -1139,7 +1161,7 @@ def _matching_lines(
             else [fold_case(text) for text in pattern]
         )
     first_hits = (
-        dict.fromkeys((literal for literal in pattern if "\n" not in literal), -1)
+        dict.fromkeys((literal for literal in pattern if "\n" not in literal[:-1]), -1)
         if priority_limit and line_re is None and isinstance(pattern, list) and len(pattern) > 1
         else {}
     )
@@ -1170,7 +1192,9 @@ def _matching_lines(
             pending_here = {literal for literal in pending if literal in source}
         if len(matches) > keep and not pending_here:
             continue
-        for off, line, hay in _matching_source_lines(lines, pattern, line_re, fold_case):
+        for off, line, hay, with_ending in _matching_source_lines(
+            lines, pattern, line_re, fold_case, terminated_lines=_terminated_lines(c)
+        ):
             key = (str(c["path"]), int(c["start_line"] or 1) + off)
             if match_commits is not None:
                 commit = str(c.get("indexed_commit") or "").rstrip("\0")
@@ -1178,7 +1202,11 @@ def _matching_lines(
                     match_commits[key] = ""
             if key in seen:
                 continue  # the same span indexed twice (re-parse race)
-            new_patterns = {literal for literal in pending_here if literal in hay}
+            new_patterns = {
+                literal
+                for literal in pending_here
+                if literal in (with_ending if literal.endswith("\n") else hay)
+            }
             if len(matches) > keep and not new_patterns:
                 if not pending:
                     return _promote_pattern_hits(matches, first_hits, priority_limit), False

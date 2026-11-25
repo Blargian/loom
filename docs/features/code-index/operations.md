@@ -119,6 +119,11 @@ A literal batch can recover one missing call alongside other exact literals,
 such as an existing test name. The exact matches and related source stay in
 their respective result fields.
 
+In matches mode, a literal can end with `\n` or `\r\n` to match that physical
+line ending. The check uses file metadata from the same indexed revision.
+Notebook projections and reference excerpts support literal text matches.
+The returned match text excludes the terminator.
+
 Use a list for literal alternatives. When a string of call fragments separated
 by pipes fails to compile as a regex, `related_on_miss` can find qualified uses
 of one shared member spelling in the same search scope. The `related` block
