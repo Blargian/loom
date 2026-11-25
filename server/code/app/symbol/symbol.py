@@ -8,11 +8,12 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable
-from typing import Any
+from typing import Any, Literal
 
 from server.code.api.models_symbol import (
     EDIT_TEST_CONTEXT_LINES,
     CodeEditContextInput,
+    CodeEditContextTarget,
     CodeSymbolInput,
     CodeSymbolOutput,
 )
@@ -539,11 +540,19 @@ def _budget_definitions(units: list[Any], token_budget: int) -> tuple[list[Any],
 
 
 async def handle_code_edit_context(input: CodeEditContextInput) -> CodeSymbolOutput:
-    from server.code.app.symbol.edit_target import EditTarget, locate_edit_target
-
     require_code_intel()
+    if input.names:
+        if input.name or input.clues:
+            raise ValidationError("code.edit_context names cannot be combined with name or clues")
+        return await _batched_edit_context(input)
     if not input.name and not input.clues:
         raise ValidationError("code.edit_context requires a name or literal clues")
+    return await _single_edit_context(input)
+
+
+async def _single_edit_context(input: CodeEditContextInput) -> CodeSymbolOutput:
+    from server.code.app.symbol.edit_target import EditTarget, locate_edit_target
+
     target = await locate_edit_target(input) if input.clues else EditTarget(name=input.name)
     if not target.name:
         return CodeSymbolOutput(
@@ -551,7 +560,7 @@ async def handle_code_edit_context(input: CodeEditContextInput) -> CodeSymbolOut
         )
     out = await handle_code_symbol(
         CodeSymbolInput(
-            **input.model_dump(exclude={"name", "clues"}),
+            **input.model_dump(exclude={"name", "clues", "names"}),
             name=target.name,
             include_history=False,
             test_examples_only=True,
@@ -581,6 +590,87 @@ async def handle_code_edit_context(input: CodeEditContextInput) -> CodeSymbolOut
                 )
             ]
     return out
+
+
+async def _batched_edit_context(input: CodeEditContextInput) -> CodeSymbolOutput:
+    from server.code.domain.units import CodeUnit, estimate_json_tokens, estimate_unit_tokens
+
+    started = time.monotonic()
+    start_stage_wall()
+    names = list(dict.fromkeys(input.names))
+
+    async def read_target(name: str) -> CodeSymbolOutput:
+        with code_span("edit_context.target"):
+            return await _single_edit_context(input.model_copy(update={"name": name}))
+
+    with code_span("edit_context.batch", seeds=len(names)):
+        results = await asyncio.gather(
+            *(read_target(name) for name in names),
+            return_exceptions=True,
+        )
+    by_name = dict(zip(names, results, strict=True))
+    definitions: list[CodeUnit] = []
+    positions: dict[str, int] = {}
+    targets: list[CodeEditContextTarget] = []
+    for name in input.names:
+        result = by_name[name]
+        if isinstance(result, BaseException):
+            raise result
+        indices: list[int] = []
+        for unit in result.definitions:
+            key = unit.model_dump_json()
+            index = positions.setdefault(key, len(definitions))
+            if index == len(definitions):
+                definitions.append(unit)
+            indices.append(index)
+        status: Literal["resolved", "ambiguous", "dependency", "not_found"]
+        if result.resolved_by == "dependency":
+            status = "dependency"
+        elif result.ambiguous:
+            status = "ambiguous"
+        else:
+            status = "resolved" if indices else "not_found"
+        targets.append(
+            CodeEditContextTarget(
+                name=name,
+                status=status,
+                definition_indices=indices,
+                candidates=result.candidates,
+                resolved_by=result.resolved_by,
+                presence=result.presence,
+                hierarchy=result.hierarchy,
+                documented_in=result.documented_in,
+                trace_run_id=result.trace_run_id,
+            )
+        )
+    note_budget_shape("named_batch")
+    tokens = sum(estimate_unit_tokens(unit) for unit in definitions) + estimate_json_tokens(
+        [target.model_dump() for target in targets]
+    )
+    org, ns = resolve_code_identity(input.org, input.namespace)
+    route = "edit_context_named_batch"
+    trace_id = _symbol_trace(
+        input,
+        org,
+        ns,
+        route,
+        definitions,
+        tokens,
+        started,
+        op_name="code.edit_context",
+        query="\n".join(names),
+        args={"names_n": len(names), "shape": "named_batch"},
+    )
+    set_code_span_attributes(
+        route=route,
+        results=len(definitions),
+        tokens_returned=tokens,
+        abstain=not definitions,
+        consumer=input.consumer,
+    )
+    return CodeSymbolOutput(
+        definitions=definitions, edit_targets=targets, tokens_returned=tokens, trace_run_id=trace_id
+    )
 
 
 def _matches_source(unit: Any, matches: list[dict[str, Any]]) -> bool:
@@ -845,6 +935,7 @@ def _symbol_trace(
     *,
     op_name: str = "code.symbol",
     args: dict[str, Any] | None = None,
+    query: str | None = None,
 ) -> str:
     """The code.symbol trace row; returns its run id. `args` are the knobs that shaped the
     answer (pr_number, near_paths_n, uses_brief, picked_by, shape); the bare lookup writes
@@ -855,7 +946,7 @@ def _symbol_trace(
         org=org,
         ns=ns,
         op=op_name,
-        query=input.name or input.symbol_id,
+        query=query if query is not None else input.name or input.symbol_id,
         route=route,
         args=args or None,
         returned_ids=[u.unit_id for u in budgeted],

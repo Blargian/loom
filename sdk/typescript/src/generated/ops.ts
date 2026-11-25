@@ -772,6 +772,8 @@ export interface CodeEditContextInput {
   name?: string;
   /** Literal fragments to find the edit target in a file or across the index. */
   clues?: string[];
+  /** Batch name, path:symbol or path:line. Replaces name and clues. */
+  names?: string[];
 }
 
 export interface CodeUnit {
@@ -806,6 +808,18 @@ export interface CodeUnit {
   namespace?: string;
 }
 
+export interface CodeEditContextTarget {
+  name: string;
+  status: "resolved" | "ambiguous" | "dependency" | "not_found";
+  definition_indices?: number[];
+  candidates?: Array<Record<string, unknown>>;
+  resolved_by?: string;
+  presence?: Array<Record<string, unknown>>;
+  hierarchy?: Record<string, Array<Record<string, unknown>>>;
+  documented_in?: Array<Record<string, unknown>>;
+  trace_run_id?: string;
+}
+
 export interface CodeSymbolOutput {
   definitions: CodeUnit[];
   lessons_left_out?: number;
@@ -825,6 +839,7 @@ export interface CodeSymbolOutput {
   neighbour_tokens?: number;
   presence?: Array<Record<string, unknown>>;
   summary?: Record<string, string[]>;
+  edit_targets?: CodeEditContextTarget[];
 }
 
 export interface CodeEnclosingInput {

@@ -501,6 +501,96 @@ async def test_symbol_reads_test_examples_with_the_definition(code_env, monkeypa
     assert example["context"]["text"].strip() == call
 
 
+async def test_edit_context_batches_definitions_and_their_tests(code_env, monkeypatch) -> None:
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from server.code.api.models_symbol import CodeEditContextInput
+    from server.code.app.symbol import handle_code_edit_context
+    from server.code.app.symbol import symbol as edit_handler
+    from server.core.errors import ValidationError
+    from server.embedding.fake import fake_model_name
+    from server.settings import settings
+
+    repo, org, ns = code_env
+    monkeypatch.setattr(settings, "code_intel_enabled", True)
+    monkeypatch.setattr(settings, "embedding_model", fake_model_name(settings.embedding_dim))
+    await _ingest(repo, org, ns)
+    call = "void test_work() { DB::doWork(); }"
+    await _ingest(repo, org, ns, source=(call + "\n").encode(), path="tests/test_work.cpp")
+    await _ingest(repo, org, ns, source=b"def helper():\n    return 42\n", path="src/second.py")
+    dependency = {"namespace": "dependency", "verdict": "present", "path": "src/other.py"}
+
+    async def dependency_lookup(input, _org, _ns):
+        if input.name == "external_symbol":
+            return [dependency], {"present": ["dependency"]}
+        return [], {}
+
+    monkeypatch.setattr(edit_handler, "_dependency_presence", dependency_lookup)
+    names = [
+        "DB::doWork",
+        "src/S.cpp:DB::doWork",
+        "src/second.py:helper",
+        "missing_symbol",
+        "DB::Squasher::insert",
+        "DB::doWork",
+        "external_symbol",
+    ]
+    query = CodeEditContextInput(org=org, namespace=ns, names=names, include_lessons=False)
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    tracer = provider.get_tracer("loom.handlers")
+    monkeypatch.setattr(trace, "get_tracer", lambda *_args, **_kw: tracer)
+    with tracer.start_as_current_span("request"):
+        result = await handle_code_edit_context(query)
+    spans = exporter.get_finished_spans()
+    root = next(span for span in spans if span.name == "request")
+    children = [span for span in spans if span.name == "code.edit_context.target"]
+    assert root.attributes["loom.code.route"] == "edit_context_named_batch"
+    assert root.attributes["loom.code.results"] == 4
+    assert root.attributes["loom.code.abstain"] is False
+    assert any(span.attributes.get("loom.code.abstain") is True for span in children)
+    assert [target.name for target in result.edit_targets] == names
+    assert [target.status for target in result.edit_targets] == [
+        "resolved",
+        "resolved",
+        "resolved",
+        "not_found",
+        "ambiguous",
+        "resolved",
+        "dependency",
+    ]
+    assert [target.definition_indices for target in result.edit_targets] == [
+        [0],
+        [0],
+        [1],
+        [],
+        [2, 3],
+        [0],
+        [],
+    ]
+    assert len(result.definitions) == 4
+    first, second = result.definitions[:2]
+    assert first.body.strip() == "void doWork() { }"
+    assert first.examples[0]["context"]["text"].strip() == call
+    assert second.body.strip() == "def helper():\n    return 42"
+    assert len({item.signature for item in result.definitions[2:]}) == 2
+    assert result.edit_targets[0].trace_run_id
+    assert result.edit_targets[-2].trace_run_id == result.edit_targets[0].trace_run_id
+    assert result.edit_targets[-1].resolved_by == "dependency"
+    assert result.edit_targets[-1].presence == [dependency]
+    assert result.trace_run_id and result.trace_run_id != result.edit_targets[0].trace_run_id
+    single = await handle_code_edit_context(
+        query.model_copy(update={"name": names[0], "names": []})
+    )
+    assert "edit_targets" not in single.model_dump()
+    with pytest.raises(ValidationError, match="cannot be combined"):
+        await handle_code_edit_context(query.model_copy(update={"name": names[0]}))
+
+
 @pytest.mark.parametrize("older_site_line", [None, 3, 20])
 async def test_edit_context_prefers_distinct_test_source_windows(
     code_env, monkeypatch, older_site_line
