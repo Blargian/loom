@@ -545,9 +545,19 @@ export function procedureMdx(text) {
     const heading = procedure[index];
     const bodyStart = heading.index + heading[0].length;
     const bodyEnd = procedure[index + 1]?.index ?? end;
+    result += `<a id=${JSON.stringify(procedureHeadingId(heading[1], heading[2]))}></a>\n`;
     result += `<Step title=${JSON.stringify(heading[2])}>${text.slice(bodyStart, bodyEnd)}</Step>\n\n`;
   }
   return `${result}</Steps>\n\n${text.slice(end)}`;
+}
+
+function procedureHeadingId(number, title) {
+  return `${number}-${title}`
+    .toLowerCase()
+    .replace(/[`*_~]/g, "")
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .trim()
+    .replace(/\s+/g, "-");
 }
 
 /** Escape uppercase Markdown placeholders that MDX would otherwise parse as JSX tags. */
@@ -614,9 +624,13 @@ function gitBlob(text) {
 
 /** Mark published translations whose stamped English source differs from this build's source. */
 export function staleTranslationNotice(text, english, url) {
-  if (english === null) return text;
   const stamp = text.match(STAMP);
-  if (!stamp || stamp[2] === gitBlob(english)) return text;
+  if (!stamp) return text;
+  if (english === null) {
+    const notice = "> **Translation notice:** The English source is no longer published.";
+    return text.replace(stamp[0], `${stamp[0]}\n\n${notice}\n`);
+  }
+  if (stamp[2] === gitBlob(english)) return text;
   const notice = "> **Translation notice:** The English source has changed. Read the [English page](" + url + ").";
   return text.replace(stamp[0], `${stamp[0]}\n\n${notice}\n`);
 }

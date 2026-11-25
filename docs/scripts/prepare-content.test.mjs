@@ -165,7 +165,15 @@ test("renders numbered source sections as Steps only in prepared content", () =>
   const source =
     "# Quickstart\n\nIntro.\n\n## 1. Boot the stack\n\nRun it.\n\n## 2. Open the dashboard\n\nOpen it.\n\n## Optional\n\nMore.\n";
   const expected =
-    '# Quickstart\n\nIntro.\n\n<Steps>\n\n<Step title="Boot the stack">\n\nRun it.\n\n</Step>\n\n<Step title="Open the dashboard">\n\nOpen it.\n\n</Step>\n\n</Steps>\n\n## Optional\n\nMore.\n';
+    '# Quickstart\n\nIntro.\n\n<Steps>\n\n<a id="1-boot-the-stack"></a>\n<Step title="Boot the stack">\n\nRun it.\n\n</Step>\n\n<a id="2-open-the-dashboard"></a>\n<Step title="Open the dashboard">\n\nOpen it.\n\n</Step>\n\n</Steps>\n\n## Optional\n\nMore.\n';
+
+  assert.equal(procedureMdx(source), expected);
+});
+
+test("preserves source heading anchors when rendering steps", () => {
+  const source = "## 1. Boot the stack\n\nRun it.\n";
+  const expected =
+    '<Steps>\n\n<a id="1-boot-the-stack"></a>\n<Step title="Boot the stack">\n\nRun it.\n</Step>\n\n</Steps>\n\n';
 
   assert.equal(procedureMdx(source), expected);
 });
@@ -180,6 +188,18 @@ test("marks a stale translation after its stamped source comment", () => {
     staleTranslationNotice(translation, source, "/docs/getting-started/quickstart/"),
     "<!-- i18n: source=docs/getting-started/quickstart.md blob=0000000000000000000000000000000000000000 model=test -->\n\n" +
       "> **Translation notice:** The English source has changed. Read the [English page](/docs/getting-started/quickstart/).\n\n# Inicio rápido\n",
+  );
+});
+
+test("marks a translation whose English source was removed without linking to it", () => {
+  const translation =
+    "<!-- i18n: source=docs/getting-started/quickstart.md blob=0000000000000000000000000000000000000000 model=test -->\n" +
+    "# Inicio rápido\n";
+
+  assert.equal(
+    staleTranslationNotice(translation, null, ""),
+    "<!-- i18n: source=docs/getting-started/quickstart.md blob=0000000000000000000000000000000000000000 model=test -->\n\n" +
+      "> **Translation notice:** The English source is no longer published.\n\n# Inicio rápido\n",
   );
 });
 
