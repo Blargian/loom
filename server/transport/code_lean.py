@@ -19,6 +19,7 @@ HTTP and SDK shapes are unchanged; `explain=true` skips all trimming.
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter, defaultdict
 from io import StringIO
 from typing import Any, NamedTuple
@@ -27,6 +28,8 @@ from pydantic import ValidationError
 
 from server.code.api.models_common import _safe_path
 from server.code.api.models_read import CODE_READ_MAX_RANGES, CodeReadRangeInput
+from server.code.api.models_symbol import EDIT_CONTEXT_MAX_NAMES, CodeEditContextInput
+from server.code.app.symbol.resolve import _parse_location
 from server.code.domain.extract.py_notebooks import is_notebook_path
 from server.code.domain.symbol_documentation import description_repeats_body
 
@@ -236,15 +239,33 @@ def _lean_grep(out: dict[str, Any]) -> None:
         out["related"] = lean_code("code.grep", related)
 
 
-def _grep_read_continuation(
+_PYTHON_DECLARATION = re.compile(r"^(?:async\s+)?def\s+([^\W\d]\w*)\s*[\[(]")
+
+
+def _python_declaration_at_hit(hit: dict[str, Any], path: str) -> bool:
+    definition = _PYTHON_DECLARATION.match(str(hit.get("text") or "").lstrip())
+    return bool(
+        path.endswith((".py", ".pyi"))
+        and definition
+        and definition[1] == str(hit["scope"]).rsplit("::", 1)[-1]
+    )
+
+
+def _grep_continuation(
     out: dict[str, Any],
     arguments: dict[str, Any],
+    followups: frozenset[str],
 ) -> None:
-    """Give excerpt callers a batch of source ranges they can read next."""
+    """Give excerpt callers a batch of declarations they can retrieve next."""
     contexts = out.get("contexts") or []
-    if arguments.get("include_body") is not False or not contexts or out.get("definitions"):
+    if (
+        arguments.get("include_body") is not False
+        or "loom_code_read" not in followups
+        or not contexts
+        or out.get("definitions")
+    ):
         return
-    selections: dict[tuple[str, int, int], CodeReadRangeInput] = {}
+    selections: dict[tuple[str, int, int], tuple[CodeReadRangeInput, bool]] = {}
     for hit in out.get("matches") or []:
         if not isinstance(hit, dict):
             continue
@@ -269,15 +290,43 @@ def _grep_read_continuation(
             continue
         if not _safe_path(span.path) or "\0" in span.path or is_notebook_path(span.path):
             continue
-        selections.setdefault((span.path, span.start_line, end), span)
+        selections.setdefault(
+            (span.path, span.start_line, end), (span, _python_declaration_at_hit(hit, span.path))
+        )
         if len(selections) == CODE_READ_MAX_RANGES:
             break
-    if selections:
-        params = {
-            "ranges": [span.model_dump() for span in selections.values()],
-            **{key: arguments[key] for key in ("org", "namespace") if arguments.get(key)},
+    if not selections:
+        return
+    options = {key: arguments[key] for key in ("org", "namespace") if arguments.get(key)}
+    options.update(
+        {
+            key: arguments[key]
+            for key in ("include_lessons", "lesson_namespaces")
+            if key in arguments
         }
-        out["next"] = "For the full source, call loom_code_read with " + json.dumps(params)
+    )
+    spans = [span for span, _ in selections.values()]
+    if (
+        "loom_code_edit_context" in followups
+        and len(spans) <= EDIT_CONTEXT_MAX_NAMES
+        and all(declaration for _, declaration in selections.values())
+    ):
+        names = [f"{span.path}:{span.start_line}" for span in spans]
+        if all(
+            _parse_location(name) == (span.path, span.start_line)
+            for name, span in zip(names, spans, strict=True)
+        ):
+            try:
+                CodeEditContextInput(names=names)
+            except ValidationError:
+                pass
+            else:
+                out["edit_context_next"] = {
+                    "tool": "loom_code_edit_context",
+                    "arguments": {"names": names, **options},
+                }
+    params = {"ranges": [span.model_dump() for span in spans], **options}
+    out["next"] = "For the full source, call loom_code_read with " + json.dumps(params)
 
 
 class _GrepBody(NamedTuple):
@@ -591,7 +640,13 @@ LEAN_CODE_OPS: frozenset[str] = frozenset(
 )
 
 
-def lean_code(op_name: str, payload: Any, arguments: dict[str, Any] | None = None) -> Any:
+def lean_code(
+    op_name: str,
+    payload: Any,
+    arguments: dict[str, Any] | None = None,
+    *,
+    followups: frozenset[str] = frozenset(),
+) -> Any:
     """The MCP shape of a code.* result (see module docstring)."""
     if not isinstance(payload, dict) or op_name not in LEAN_CODE_OPS:
         return payload
@@ -612,8 +667,8 @@ def lean_code(op_name: str, payload: Any, arguments: dict[str, Any] | None = Non
     fn = _PER_OP.get(op_name)
     if fn is not None:
         fn(out)
-    if op_name == "code.grep" and arguments is not None:
-        _grep_read_continuation(out, arguments)
+    if op_name == "code.grep" and arguments is not None and followups:
+        _grep_continuation(out, arguments, followups)
     if op_name == "code.edit_context" and out.get("edit_targets") and out.get("definitions"):
         out = _share_edit_test_source(out)
     _hoist_defaults(out)
