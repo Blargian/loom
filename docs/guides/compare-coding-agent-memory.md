@@ -58,6 +58,22 @@ Keep the same tasks, starting revisions, and acceptance tests. Count model use, 
 maintenance, and human review time before assigning a budget. See the
 [paired coding-task scorecard](../getting-started/evaluate.md#compare-coding-agents-with-and-without-memory).
 
+## What changed in a paired coding-agent test?
+
+Claude Code answered 36 file-location questions on the ClickHouse repository in ten
+pairs of runs per question. Both setups had the same local tools. The Loom setup
+also had the plugin and indexed code tools. The correct file appeared among the
+first three named files in 96.4% of Loom runs and 91.4% of baseline runs.
+
+Mean session model cost fell from $0.096 to $0.076 per question. Mean elapsed time
+rose from 19.7 to 25.0 seconds. The cost covers the agent's model bill. Include
+server model calls, indexing, and hosting when estimating the full cost of a deployment.
+The test scored file identification. Use your repository's acceptance tests to
+measure whether the resulting patches pass review and CI.
+
+The [paired benchmark](../benchmarks/results.md#with-and-without-loom) includes the
+setup, raw runs, and answer-quality results for other repository questions.
+
 ## Move a saved decision to a fresh setup
 
 The fixture copies the corrected retry decision into fresh storage, then reads it
@@ -109,9 +125,9 @@ If a default port is taken, set
 `COMPARISON_CH_HTTP_PORT`, `COMPARISON_CH_NATIVE_PORT`, or `COMPARISON_API_PORT` to
 unused ports before running it.
 
-The comparison runner checks the protocol and storage for one fixture. It exercises
-separate MCP sessions without a coding model. The comparison gives no estimates of model
-accuracy, semantic recall, latency, throughput, or hosted cost.
+The runner uses separate MCP sessions to check exact-key reads, project access, source
+changes, and portability in one storage fixture. The [paired coding-agent test](#what-changed-in-a-paired-coding-agent-test)
+measures file identification, session model cost, and elapsed time separately.
 
 [Read how Loom tracks code-linked decisions](../use-cases/memory-linked-to-code.md) or
 [query memory history with SQL](../use-cases/self-hosted-clickhouse.md#audit-a-changed-decision-with-sql).
