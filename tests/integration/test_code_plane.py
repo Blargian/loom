@@ -591,7 +591,20 @@ async def test_edit_context_batches_definitions_and_their_tests(code_env, monkey
         await handle_code_edit_context(query.model_copy(update={"name": names[0]}))
 
 
-@pytest.mark.parametrize("clue_shape", ["declarations", "mixed", "one_declaration"])
+@pytest.mark.parametrize(
+    "clue_shape",
+    [
+        "declarations",
+        "mixed",
+        "one_declaration",
+        "missing",
+        "one_plus_missing",
+        "same_hits",
+        "stripped",
+        "mixed_preview",
+        "multiline",
+    ],
+)
 async def test_edit_context_reads_verified_declarations_across_files(
     code_env, monkeypatch, clue_shape
 ) -> None:
@@ -610,6 +623,8 @@ async def test_edit_context_reads_verified_declarations_across_files(
         "src/beta.py": b"def submit(value):\n    result = value * 2\n    return result\n",
         "src/gamma.py": b"def handle(value):\n    return value - 1\n",
     }
+    if clue_shape == "mixed_preview":
+        sources["src/alpha.py"] = b'def submit(value="    def other("):\n    return value\n'
     for path, body in sources.items():
         await _ingest(repo, org, ns, source=body, path=path)
     clues = ["def submit(", "def handle("]
@@ -621,12 +636,50 @@ async def test_edit_context_reads_verified_declarations_across_files(
         candidate_paths.add(path)
     elif clue_shape == "one_declaration":
         clues[0] = "return result"
+    elif clue_shape == "missing":
+        clues.append("def removed(")
+    elif clue_shape in {"stripped", "mixed_preview"}:
+        path = "src/delta.py"
+        await _ingest(
+            repo,
+            org,
+            ns,
+            source=b"class Handler:\n    def other(self):\n        return 1\n",
+            path=path,
+        )
+        if clue_shape == "mixed_preview":
+            clues = ["    def other(", "def handle(", "def removed("]
+            candidate_paths.remove("src/beta.py")
+        else:
+            clues.append("    def other(")
+        candidate_paths.add(path)
+    elif clue_shape in {"one_plus_missing", "same_hits"}:
+        clues[1] = "def removed("
+        if clue_shape == "same_hits":
+            clues.append("def submit")
+        candidate_paths.remove("src/gamma.py")
+    elif clue_shape == "multiline":
+        await _ingest(
+            repo,
+            org,
+            ns,
+            source=b"def other(\n    value,\n):\n    return value\n",
+            path="src/delta.py",
+        )
+        clues.append("def other(\n    value")
     result = await symbol.handle_code_edit_context(
         CodeEditContextInput(org=org, namespace=ns, clues=clues, include_lessons=False)
     )
     assert result.ambiguous
     assert {candidate["path"] for candidate in result.candidates} == candidate_paths
-    if clue_shape == "one_declaration":
+    if clue_shape in {
+        "one_declaration",
+        "one_plus_missing",
+        "same_hits",
+        "stripped",
+        "mixed_preview",
+        "multiline",
+    }:
         assert result.definitions == []
         return
     assert {unit.path: unit.body.encode().rstrip(b"\n") for unit in result.definitions} == {
