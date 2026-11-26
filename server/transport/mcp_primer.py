@@ -364,6 +364,8 @@ def _bound_coding_connection(toolset: str | None) -> bool:
 
 def _linked_history_guidance(task_pack: str | None) -> str:
     return (
+        "For a repeat source lookup, set `include_lessons: false` when you already have "
+        "the linked lessons for that scope. "
         "For prior decisions or procedures beyond linked code lessons, use "
         f"{task_pack} with the task as `query`. "
     )
