@@ -17,6 +17,8 @@ from server.code.app.enrich import (
     usage_examples,
 )
 from server.code.app.symbol import examples as h
+from server.code.app.symbol.edit_reads import _read_candidates
+from server.code.domain.units import CodeUnit
 from server.code.store.index import CodeRepo
 from server.core.errors import NotFoundError, PreconditionFailedError
 from server.settings import settings
@@ -185,6 +187,88 @@ def test_edit_examples_prefer_a_test_named_for_the_related_target() -> None:
 
     assert [site["line"] for site in examples] == [10, 5, 30]
     assert examples[0]["caller"] == "test_routes::test_blueprint_url_processors::index"
+
+
+def test_edit_read_target_requires_one_member_within_the_returned_definition() -> None:
+    path, symbol = "src/handlers.py", "src.handlers::render"
+    revision = "a" * 40
+    unit = CodeUnit(path=path, symbol=symbol, start_line=4, end_line=9)
+    edge = {
+        "path": path,
+        "line": 6,
+        "from_qualified_name": symbol,
+        "tier": "treesitter",
+        "to_qualified_name": "src.options::Options::label",
+        "to_symbol_id": "label",
+        "indexed_commit": revision,
+    }
+    anchors = {(path, symbol): unit}
+    targets = _read_candidates(anchors, [edge, {**edge, "line": 7}, {**edge, "line": 12}])
+    assert [site.line for site in targets["label", "src.options::Options::label", revision]] == [
+        6,
+        7,
+    ]
+
+    alternate = {
+        **edge,
+        "to_qualified_name": "src.options::Options::style",
+        "to_symbol_id": "style",
+    }
+    assert not _read_candidates(anchors, [edge, alternate])
+    other = unit.model_copy(
+        update={"symbol": "src.handlers::render_summary", "start_line": 10, "end_line": 16}
+    )
+    anchors[path, other.symbol] = other
+    shared = _read_candidates(
+        anchors,
+        [
+            edge,
+            alternate,
+            {**edge, "line": 7},
+            {**edge, "from_qualified_name": other.symbol, "line": 12},
+        ],
+    )
+    assert [site.line for site in shared["label", "src.options::Options::label", revision]] == [
+        7,
+        12,
+    ]
+
+
+async def test_edit_read_sources_verify_a_shared_root_once(monkeypatch) -> None:
+    from server.code.api.models_symbol import CodeEditReadSite
+    from server.code.app.symbol import edit_reads
+
+    revision = "a" * 40
+    caller = CodeUnit(path="src/handlers.py", symbol="src.handlers::show", body="def show(): pass")
+    names = ["src.options::Options::label", "src.options::Options::style"]
+    keys = [(name, name, revision) for name in names]
+    destinations = {
+        key: {"path": "src/options.py", "qualified_name": key[1], "start_line": 1, "end_line": 2}
+        for key in keys
+    }
+    groups = {
+        key: [CodeEditReadSite(path=caller.path, symbol=caller.symbol, line=line)]
+        for line, key in enumerate(keys, start=2)
+    }
+    reads: list[str] = []
+
+    class SourceRecords:
+        async def file_rows_for_paths(self, org, ns, paths):
+            return {path: {"indexed_commit": revision} for path in paths}
+
+    async def body(repo, org, ns, row, *, expected_commit):
+        assert (org, ns, expected_commit) == ("org", "scope", revision)
+        name = row["qualified_name"]
+        reads.append(name)
+        return caller.body if name == caller.symbol else f"body of {name}"
+
+    monkeypatch.setattr(edit_reads, "symbol_body", body)
+    repo: Any = SourceRecords()
+    sources = await edit_reads._hydrate_read_sources(
+        repo, "org", "scope", {(caller.path, caller.symbol): caller}, destinations, groups
+    )
+    assert [source.qualified_name for source in sources] == names
+    assert sorted(reads) == sorted([caller.symbol, *names])
 
 
 @pytest.mark.asyncio
