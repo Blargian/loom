@@ -31,7 +31,9 @@ from server.code.api.models_read import CODE_READ_MAX_RANGES, CodeReadRangeInput
 from server.code.api.models_symbol import EDIT_CONTEXT_MAX_NAMES, CodeEditContextInput
 from server.code.app.symbol.resolve import _parse_location
 from server.code.domain.extract.py_notebooks import is_notebook_path
+from server.code.domain.scope import current_code_scope
 from server.code.domain.symbol_documentation import description_repeats_body
+from server.settings import settings
 
 # Accounting counters and ranking internals no agent acts on.
 _DROP_KEYS: frozenset[str] = frozenset(
@@ -261,7 +263,6 @@ def _grep_continuation(
     if (
         arguments.get("include_body") is not False
         or "loom_code_read" not in followups
-        or not contexts
         or out.get("definitions")
     ):
         return
@@ -297,7 +298,13 @@ def _grep_continuation(
             break
     if not selections:
         return
-    options = {key: arguments[key] for key in ("org", "namespace") if arguments.get(key)}
+    scope = (arguments.get("org"), arguments.get("namespace"))
+    # A cell checks the organization before applying the connection's scope.
+    options = (
+        {}
+        if not settings.cell and scope == current_code_scope()
+        else {key: arguments[key] for key in ("org", "namespace") if arguments.get(key)}
+    )
     options.update(
         {
             key: arguments[key]
@@ -325,6 +332,8 @@ def _grep_continuation(
                     "tool": "loom_code_edit_context",
                     "arguments": {"names": names, **options},
                 }
+    if not contexts and "edit_context_next" not in out:
+        return
     params = {"ranges": [span.model_dump() for span in spans], **options}
     out["next"] = "For the full source, call loom_code_read with " + json.dumps(params)
 
