@@ -103,7 +103,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      actions: read # Read the validating CI run when finalizing translations.
+      actions: write # Read validating CI and dispatch IndexNow after the translation merge.
       contents: write # Write the validated squash merge to main.
       pull-requests: write # Squash-merge the validated translation pull request.
     steps:

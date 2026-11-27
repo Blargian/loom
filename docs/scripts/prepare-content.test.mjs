@@ -278,7 +278,7 @@ test("marks a stale translation after its stamped source comment", () => {
 
 test("rewrites retired repository llms links to the generated site files", () => {
   const source =
-    "[index](https://github.com/ClickHouse/loom/blob/main/llms.txt) [full](https://github.com/ClickHouse/loom/blob/main/llms-full.txt)\n";
+    "[index](https://github.com/ClickHouse/loom/blob/main/llms.txt) [full](https://clickhouse.github.io/loom/llms-full.txt)\n";
   const expected = "[index](/docs/llms.txt) [full](/docs/llms-full.txt)\n";
 
   assert.equal(rewriteSourceLinks(source, "ja/index.md"), expected);

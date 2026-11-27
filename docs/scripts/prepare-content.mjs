@@ -659,6 +659,8 @@ export function rewriteSourceLinks(text, from) {
         const generated = {
           "https://github.com/ClickHouse/loom/blob/main/llms.txt": "/docs/llms.txt",
           "https://github.com/ClickHouse/loom/blob/main/llms-full.txt": "/docs/llms-full.txt",
+          "https://clickhouse.github.io/loom/llms.txt": "/docs/llms.txt",
+          "https://clickhouse.github.io/loom/llms-full.txt": "/docs/llms-full.txt",
         }[target];
         if (generated) return `${prefix}${generated}${suffix}`;
         if (/^(?:[a-z]+:|\/|#)/i.test(target)) return whole;

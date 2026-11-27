@@ -447,7 +447,10 @@ def test_hosted_finalizer_respects_reviews_and_merges_only_exact_successful_head
         )
         assert merge_calls[0][-2:] == ("--match-head-commit", sha)
         assert "--admin" not in merge_calls[0] and "--auto" not in merge_calls[0]
-        assert calls[-1] == merge_calls[0]
+        assert calls[-2:] == [
+            merge_calls[0],
+            ("gh", "workflow", "run", "docs-site.yml", "--ref", "main"),
+        ]
         assert build_environments == [
             {
                 key: value

@@ -163,9 +163,7 @@ def test_the_key_file_is_named_after_its_own_content_and_the_payload_points_at_i
 def test_a_change_to_the_build_submits_every_page() -> None:
     every = indexnow.every_page()
     assert SITE in every and SITE + "use-cases/" in every
-    for path in (
-        "scripts/i18n/site.py",
-    ):
+    for path in ("scripts/i18n/site.py",):
         assert indexnow.urls_for({path: "M"}) == every
     # Changing the submitter itself, or a file that only looks like a build input, renders
     # nothing differently.

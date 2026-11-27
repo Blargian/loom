@@ -478,6 +478,7 @@ def finalize() -> None:
     merged = api(f"repos/{repository}/pulls/{pr['number']}")
     if not merged["merged"] or merged["head"]["sha"] != sha:
         raise ValueError("translation merge readback does not match validated head")
+    command("gh", "workflow", "run", "docs-site.yml", "--ref", "main")
 
 
 def main(argv: list[str] | None = None) -> int:
