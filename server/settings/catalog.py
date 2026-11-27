@@ -3230,7 +3230,7 @@ class MemorySettings(BaseModel):
     memory_code_links_interval_seconds: int = 60
     # Seconds a code-links pass may run before the supervisor abandons it.
     memory_code_links_max_pass_seconds: float = Field(default=600.0, gt=0)
-    # Memory writes one pass links (at least 1).
+    # Rows per page of memory writes to link or pending links to recheck (at least 1).
     memory_code_links_batch: int = Field(default=500, ge=1)
     # Seconds the memory code-link pass stays behind the newest queued memory write, so
     # inserts running at the same moment are visible before the cursor passes them (at
@@ -3238,8 +3238,7 @@ class MemorySettings(BaseModel):
     # backfill reads it; a longer wait makes that rarer and links every write that much
     # later.
     memory_code_links_settle_seconds: int = Field(default=60, ge=10)
-    # Days a code-shaped name that names nothing on trunk yet (unmerged code) is
-    # retried before it is dropped.
+    # Days to retry a code-shaped name absent from trunk, measured when each pending scan starts.
     memory_code_links_pending_days: int = Field(default=14, ge=1)
     # Changed claims one pass re-checks with the LLM under the `revise` policy.
     memory_code_links_revise_per_pass: int = Field(default=20, ge=0)
