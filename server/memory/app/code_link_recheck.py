@@ -611,9 +611,14 @@ async def _resolve_pending(
     result: link_pass.PassResult,
     rows: list[PendingLink],
 ) -> list[Move]:
-    """Drop expired names and resolve those whose definitions exist at the head."""
-    await store.insert(store.tombstones([r for r in rows if r["expired"]]))
-    rows = [r for r in rows if not r["expired"]]
+    """Drop expired names and what waits for a raw tool observation, and resolve the
+    rest whose definitions exist at the head."""
+    waiting: list[PendingLink] = []
+    dropped: list[PendingLink] = []
+    for r in rows:
+        (dropped if r["expired"] or links.is_observation(r) else waiting).append(r)
+    await store.insert(store.tombstones(dropped))
+    rows = waiting
     if not head or not rows:
         return []
     awaiting = [r for r in rows if r["qualified_name"] == links.AWAITING_INDEX]

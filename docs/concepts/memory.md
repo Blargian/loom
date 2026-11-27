@@ -418,6 +418,11 @@ The worker checks pending names in pages and links them when it finds their defi
 on trunk. It drops names older than `memory_code_links_pending_days` (14 by default),
 measured when the scan starts.
 
+A memory whose key starts with `obs:` is a raw tool observation (`observe.record` keys a
+tool call's row `obs:<session_id>:<sha8>`) and is never linked: it records a tool call, not
+a lesson, though a coding plugin's carries its session's `repo:` tag and quotes the code a
+tool read.
+
 A link records the definition's fingerprint: all its overloads and the conditions that
 select them, as tokens, so whitespace, comments (not a Go `//go:` directive or a Python
 `# type:` comment) and most of what formatters change (trailing commas and other optional
