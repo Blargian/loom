@@ -340,6 +340,63 @@ def test_finalizer_requires_nonempty_successful_checks(checks: list[dict[str, An
     assert not a.checks_succeeded(checks)
 
 
+@pytest.mark.parametrize(("conclusion", "dispatches"), [("failure", True), ("success", False)])
+def test_finalizer_retries_unsubmitted_indexnow_after_translation_merge(
+    monkeypatch: pytest.MonkeyPatch,
+    conclusion: str,
+    dispatches: bool,
+) -> None:
+    monkeypatch.setenv("GITHUB_REPOSITORY", "ClickHouse/loom")
+    calls: list[tuple[str, ...]] = []
+
+    def api(path: str) -> Any:
+        if "state=open" in path:
+            return []
+        if "state=closed" in path:
+            return [{"merged_at": "2026-11-27T18:00:00Z"}]
+        if "actions/workflows/docs-site.yml/runs" in path:
+            return {
+                "workflow_runs": [{"created_at": "2026-11-27T18:01:00Z", "conclusion": conclusion}]
+            }
+        raise AssertionError(path)
+
+    monkeypatch.setattr(a, "api", api)
+    monkeypatch.setattr(a, "command", lambda *args, **kwargs: calls.append(args) or "")
+
+    a.finalize()
+
+    expected = [("gh", "workflow", "run", "docs-site.yml", "--ref", "main")]
+    assert calls == (expected if dispatches else [])
+
+
+def test_finalizer_retries_the_latest_unsubmitted_translation_merge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_REPOSITORY", "ClickHouse/loom")
+    calls: list[tuple[str, ...]] = []
+
+    def api(path: str) -> Any:
+        if "state=open" in path:
+            return []
+        if "state=closed" in path:
+            return [
+                {"merged_at": "2026-11-27T17:00:00Z"},
+                {"merged_at": "2026-11-27T19:00:00Z"},
+            ]
+        if "actions/workflows/docs-site.yml/runs" in path:
+            return {
+                "workflow_runs": [{"created_at": "2026-11-27T18:00:00Z", "conclusion": "success"}]
+            }
+        raise AssertionError(path)
+
+    monkeypatch.setattr(a, "api", api)
+    monkeypatch.setattr(a, "command", lambda *args, **kwargs: calls.append(args) or "")
+
+    a.finalize()
+
+    assert calls == [("gh", "workflow", "run", "docs-site.yml", "--ref", "main")]
+
+
 @pytest.mark.parametrize(
     "review,merge_state,merged",
     [

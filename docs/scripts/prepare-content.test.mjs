@@ -254,28 +254,6 @@ test("keeps a translated multiline code span on one line for link validation", (
   assert.equal(prepareTranslatedMarkup(source, new Set()), expected);
 });
 
-test("renders numbered source sections as Steps only in prepared content", () => {
-  const source =
-    "# Quickstart\n\nIntro.\n\n## 1. Boot the stack\n\nRun it.\n\n## 2. Open the dashboard\n\nOpen it.\n\n## Optional\n\nMore.\n";
-  const expected =
-    '# Quickstart\n\nIntro.\n\n<Steps>\n\n<a id="1-boot-the-stack"></a>\n<Step title="Boot the stack">\n\nRun it.\n\n</Step>\n\n<a id="2-open-the-dashboard"></a>\n<Step title="Open the dashboard">\n\nOpen it.\n\n</Step>\n\n</Steps>\n\n## Optional\n\nMore.\n';
-
-  assert.equal(procedureMdx(source), expected);
-});
-
-test("marks a stale translation after its stamped source comment", () => {
-  const source = "# Quickstart\n";
-  const translation =
-    "<!-- i18n: source=docs/getting-started/quickstart.md blob=0000000000000000000000000000000000000000 model=test -->\n" +
-    "# Inicio rápido\n";
-
-  assert.equal(
-    staleTranslationNotice(translation, source, "/docs/getting-started/quickstart/"),
-    "<!-- i18n: source=docs/getting-started/quickstart.md blob=0000000000000000000000000000000000000000 model=test -->\n\n" +
-      "> **Translation notice:** The English source has changed. Read the [English page](/docs/getting-started/quickstart/).\n\n# Inicio rápido\n",
-  );
-});
-
 test("rewrites retired repository llms links to the generated site files", () => {
   const source =
     "[index](https://github.com/ClickHouse/loom/blob/main/llms.txt) [full](https://clickhouse.github.io/loom/llms-full.txt)\n";

@@ -428,6 +428,29 @@ def finalize() -> None:
     repository = os.environ["GITHUB_REPOSITORY"]
     owner = repository.split("/")[0]
     prs = api(f"repos/{repository}/pulls?state=open&head={owner}:i18n/update&base=main&per_page=2")
+    if not prs:
+        closed = api(
+            f"repos/{repository}/pulls?state=closed&head={owner}:i18n/update&base=main&"
+            "sort=updated&direction=desc&per_page=100"
+        )
+        merged = max(
+            (pr for pr in closed if pr.get("merged_at")),
+            key=lambda pr: pr["merged_at"],
+            default=None,
+        )
+        if merged is None:
+            return
+        runs = api(
+            f"repos/{repository}/actions/workflows/docs-site.yml/runs?branch=main&"
+            "status=completed&per_page=100"
+        )
+        submitted = any(
+            run.get("conclusion") == "success" and run.get("created_at", "") >= merged["merged_at"]
+            for run in runs["workflow_runs"]
+        )
+        if not submitted:
+            command("gh", "workflow", "run", "docs-site.yml", "--ref", "main")
+        return
     if len(prs) != 1:
         return
     pr = prs[0]
