@@ -933,6 +933,14 @@ See the [participant lifecycle baseline](cells.md#participant-lifecycle-baseline
     procedure](cost-budgets.md#activation-and-rollback) defines the maintenance boundary;
     the warning fleet check alone does not make a downgrade safe.
 
+63. **The `embed_exclude` marker** (`unembedded by design: reference (embed_exclude)` in
+    `embed_last_error` on `code_chunks`) extends the reference fixtures' marker, so N-1's
+    recovery, backfill embed phase and coverage counts skip it as they skip a fixture. N-1
+    reads neither `LOOM_CODE_EMBED_EXCLUDE` nor an entry's `embed_exclude`: where it runs,
+    its ingest embeds a matching path's new chunks, its `code_summary` pass writes their
+    cards, and its `loom code reembed` and provider rebuild embed the marked rows under the
+    target model. A chunk N-1 embedded keeps its vector until its content changes.
+
 ## What checks them
 
 `scripts/gates/mixed_version.py` (`make test-mixed-version`, the `mixed-version` CI job,

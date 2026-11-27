@@ -211,6 +211,13 @@ Lanes help because a lane waits on ClickHouse round trips, not CPU.
 (`code/app/index/denylist.py`, `LOOM_CODE_INGEST_EXCLUDE`,
 `LOOM_CODE_INGEST_IGNORE_FILE`), is binary, or exceeds `LOOM_CODE_INGEST_MAX_FILE_BYTES`.
 So `coverage_floor: true` on a grep means every admitted chunk, not every byte.
+A path the entry's `embed_exclude` globs name (`LOOM_CODE_EMBED_EXCLUDE` for the scalar
+entry) is admitted, chunked and mapped, but its chunks are neither described nor embedded:
+they carry the `unembedded by design` marker, which every writer of a vector or a
+description honours and the coverage counts skip, the `code_summary` pass writes no card
+for them, and code.search reaches them through the lexical leg only. A changed glob
+applies to chunks written after it, in both directions (the operations guide's
+`embed_exclude` notes name the repair).
 
 ### Choosing a parser
 

@@ -121,6 +121,7 @@ LOOM_CODE_REPOS_JSON='[
 | `git_branch`                         | the branch this namespace tracks                                                                                              |
 | `path_prefixes`                      | comma-separated prefixes to index; an entry without it indexes the whole tree minus the built-in denylist                     |
 | `exclude`                            | globs never indexed (list or comma-separated)                                                                                 |
+| `embed_exclude`                      | globs indexed but never described or embedded (see below): symbols, edges, the test map and the lexical leg keep them         |
 | `exclude_generated`                  | refuse files whose content marks them generated (`Code generated … DO NOT EDIT.`, `@generated`)                               |
 | `include_contrib_paths`              | vendored `contrib/` paths to index anyway, so their definitions bind the repository's call sites                              |
 | `depends_on`                         | other code namespaces this code calls into; a definition missing here is looked up there                                      |
@@ -142,6 +143,21 @@ the public roots when other remotes are public. Repository jobs read no system o
 git config and inherit no `GIT_SSL_CAINFO` or `SSL_CERT_FILE`, so this setting is how a
 bundle reaches them. Put it under `/etc/ssl`, which the repository-job sandbox mounts.
 Through the forward proxy, `LOOM_CODE_GIT_PROXY_CA_FILE` takes its place when set.
+
+`embed_exclude` (`LOOM_CODE_EMBED_EXCLUDE` for the scalar entry, and for a
+`LOOM_CODE_REPOS_JSON` entry without its own list) applies to configured entries only: a
+self-service entry has none and is embedded in full. The chunks of a matching path carry
+the `unembedded by design: reference (embed_exclude)` marker: no writer describes or
+embeds them, and the coverage counts leave them out. The `code_summary` pass writes no
+card for such a file. The globs apply to chunks written after they change:
+
+1. Adding a glob leaves the path's existing vectors in place until a chunk's content
+   changes, and its existing card in place until the file changes.
+2. Removing a glob leaves the path's chunks without a vector and outside the coverage
+   denominator, so `code.repos` still reports them covered. No writer re-embeds an
+   unchanged chunk: a chunk is embedded when its content changes, and to embed them all,
+   index the repository into a new namespace with `loom code backfill`. The file's card
+   comes back at the next `code_summary` pass.
 
 An entry whose `git_remote` is a local path or `file://` mirror is known by its `repo`,
 which a page add of the same repository must match: name a mirror of a repository on a
