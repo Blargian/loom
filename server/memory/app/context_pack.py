@@ -517,10 +517,11 @@ async def _hit_actors(input: ContextPackInput, hits: list[Any]) -> _KeyWriters:
 
 
 def _code_state_and_commit(hit: Any) -> tuple[str, str]:
-    """The hit's code state and the commit of its worst link (`worst_commit`: '' for a
-    state no note names)."""
-    state = str(getattr(hit, "code_state", "") or "")
-    return state, code_change.worst_commit(getattr(hit, "_code_links", None) or [])
+    """The hit's `code_state` and `code_changed_since`."""
+    return (
+        str(getattr(hit, "code_state", "") or ""),
+        str(getattr(hit, "code_changed_since", "") or ""),
+    )
 
 
 async def _pack_decisions_from_hits(

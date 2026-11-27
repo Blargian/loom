@@ -554,9 +554,12 @@ The links are read where the code is:
   names the first indexed commit at which it read so; `context.pack` decision lines
   carry the same note, and its memory lines a `code_state=<state>@<commit>` label.
 - `memory.get` returns the links as `code` (with any `suggestion`); `memory.search` hits
-  read from a memory's own row carry its worst link as `code_state` (a chunk, record or
-  summary hit carries none and is never left out); `memory.ask` notes the memories whose
-  code moved, changed or went.
+  read from a memory's own row carry its worst link as `code_state` and, when that is
+  `changed`, `unresolved` or `missing`, the commit that put it there, when one is known,
+  as `code_changed_since` (a chunk, record or summary hit carries neither and is never
+  left out). A `render="reader"` block and every page of `loom_search`'s text say so on
+  such a hit's line, with the same note as a `memory.for_file` line; `memory.ask` notes
+  the memories whose code moved, changed or went.
 - `namespace.validate` lists memories whose code changed, was not found again or is
   gone, in the repositories the caller may read.
 
