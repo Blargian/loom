@@ -522,12 +522,12 @@ def listed_ops(toolset: str | None) -> list[Operation]:
 def _upfront_tools(configured: str, toolset: str, profile: str) -> set[str]:
     if configured.strip().casefold() != "auto":
         return {name.strip() for name in configured.split(",") if name.strip()}
-    if toolset == "coding" and profile == "compact":
-        return {"code.edit_context", "code.grep"}
-    names = {"code.search", "code.symbol", "code.grep"}
-    if toolset != "coding":
-        names.update({"search.query", LOOM_OP_TOOL_NAME})
-    return names
+    if toolset == "coding":
+        # Outside the compact profile the instructions send a definition lookup to
+        # code.symbol, so it loads with the pre-edit read and literal search.
+        names = {"code.edit_context", "code.grep"}
+        return names if profile == "compact" else names | {"code.symbol"}
+    return {"code.search", "code.symbol", "code.grep", "search.query", LOOM_OP_TOOL_NAME}
 
 
 def _with_loading_hints(descriptors: list[dict[str, Any]], requested: set[str]) -> None:
