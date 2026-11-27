@@ -65,6 +65,14 @@ PUBLIC_BUILD_INPUTS = (
 BUILD_INPUTS = (
     *SITE_BUILD_INPUTS,
     "scripts/i18n/site.py",
+    "docs/components.ts",
+    "docs/components/DocsBreadcrumb.astro",
+    "docs/components/DocsFooter.astro",
+    "docs/components/DocsLogo.astro",
+    "docs/components/DocsOutline.astro",
+    "docs/components/DocsPagination.astro",
+    "docs/components/DocsSearch.astro",
+    "docs/components/DocsSearchMarkup.astro",
 )
 
 
