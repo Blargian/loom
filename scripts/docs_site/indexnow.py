@@ -149,8 +149,8 @@ def translated_page_paths() -> list[str]:
     return [
         localized
         for language in LANGUAGES
-        for path in (ROOT / "i18n" / language / "docs").rglob("*.md")
-        if (localized := localized_page_path(path.relative_to(ROOT).as_posix())) is not None
+        for path in (DOCS.parent / "i18n" / language / "docs").rglob("*.md")
+        if (localized := localized_page_path(path.relative_to(DOCS.parent).as_posix())) is not None
     ]
 
 

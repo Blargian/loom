@@ -1,5 +1,15 @@
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -389,7 +399,8 @@ async function prepareContent() {
 }
 
 async function prepareDocsLandingMedia() {
-  const landing = join(content, "index.md");
+  const landing = [join(content, "index.md"), join(content, "index.mdx")].find(existsSync);
+  if (!landing) return;
   const text = readFileSync(landing, "utf8");
   const screenshot = /^!\[([^\n]*)\]\(assets\/screenshots\/document-search\.webp\)$/m;
   const match = screenshot.exec(text);

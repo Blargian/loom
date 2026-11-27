@@ -505,7 +505,7 @@ def test_generated_readme_uses_the_documentation_site_base() -> None:
     from scripts.i18n import site
 
     config = (ROOT / "docs/blume.config.ts").read_text()
-    assert 'site: new URL(siteUrl).origin' in config
+    assert "site: new URL(siteUrl).origin" in config
     assert 'base: "/docs"' in config
     assert site.SITE == "https://loom.clickhouse.com/docs/"
 
